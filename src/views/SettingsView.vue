@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
+import { ref, onMounted, watch } from "vue";
 import { loadConfig, saveConfig } from "@/lib/tauri";
 import type { AppConfig } from "@/lib/tauri";
 import { SaveIcon, CheckIcon, InfoIcon, SlidersIcon, KeyIcon, GlobeIcon, FolderIcon, EyeIcon, EyeOffIcon } from "lucide-vue-next";
@@ -7,7 +7,12 @@ import { SaveIcon, CheckIcon, InfoIcon, SlidersIcon, KeyIcon, GlobeIcon, FolderI
 const config = ref<AppConfig | null>(null);
 const isSaving = ref(false);
 const saveSuccess = ref(false);
-const activeTab = ref("api");
+const activeTab = ref(localStorage.getItem("lastSettingsTab") || "api");
+
+// 监听标签变化，持久化到 localStorage
+watch(activeTab, (newTab) => {
+  localStorage.setItem("lastSettingsTab", newTab);
+});
 
 // 控制每个 API Key 的显示/隐藏状态
 const showKeys = ref({

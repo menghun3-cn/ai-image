@@ -1,17 +1,15 @@
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
-import { useRouter } from "vue-router";
+import { computed } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import { ImageIcon, SettingsIcon, Grid3X3Icon } from "lucide-vue-next";
 
 const router = useRouter();
-const currentRoute = ref("/");
+const route = useRoute();
 
-onMounted(() => {
-  currentRoute.value = router.currentRoute.value.path;
-});
+// 使用计算属性实时同步路由状态
+const currentRoute = computed(() => route.path);
 
 function navigate(path: string) {
-  currentRoute.value = path;
   router.push(path);
 }
 </script>
