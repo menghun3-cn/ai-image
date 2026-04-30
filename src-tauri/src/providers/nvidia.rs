@@ -27,14 +27,15 @@ impl ImageProvider for NvidiaProvider {
 
     fn list_models(&self) -> Vec<String> {
         vec![
-            "stabilityai/stable-diffusion-3-medium".to_string(),
-            "stabilityai/stable-diffusion-3_5-large".to_string(),
-            "stabilityai/stable-diffusion-xl-1024-v1-0".to_string(),
+            "black-forest-labs/flux.2-klein-4b".to_string(),
+            "black-forest-labs/flux.1-kontext-dev".to_string(),
+            "black-forest-labs/flux.1-dev".to_string(),
+            "black-forest-labs/flux.1-schnell".to_string(),
         ]
     }
 
     async fn generate(&self, options: &GenerationOptions) -> Result<GenerationResult> {
-        let model = options.model.as_deref().unwrap_or("stabilityai/stable-diffusion-xl-1024-v1-0");
+        let model = options.model.as_deref().unwrap_or("black-forest-labs/flux.2-klein-4b");
 
         // 脱敏显示 API Key 前15位
         let key_preview = if self.config.api_key.len() > 15 {
@@ -43,23 +44,75 @@ impl ImageProvider for NvidiaProvider {
             self.config.api_key.clone()
         };
 
-        // 计算宽高比
-        let aspect_ratio = if options.width > 0 && options.height > 0 {
-            let divisor = Self::gcd(options.width, options.height);
-            format!("{}:{}", options.width / divisor, options.height / divisor)
+        // 根据模型选择不同的参数格式
+        // flux.2-klein-4b: width/height, steps=4, 无 cfg_scale
+        // flux.1-dev: width/height, steps>=5, 有 cfg_scale
+        // flux.1-schnell: width/height, steps=4, 无 cfg_scale (cfg_scale必须<=0)
+        // flux.1-kontext-dev: aspect_ratio, cfg_scale, steps=30, 需要 image (图生图)
+        let is_klein = model.contains("klein");
+        let is_dev = model.contains("flux.1-dev");
+        let is_schnell = model.contains("schnell");
+        let is_kontext = model.contains("kontext");
+        
+        let request_body = if is_klein || is_dev || is_schnell {
+            // flux.2-klein-4b / flux.1-dev / flux.1-schnell: 使用 width/height
+            let width = if options.width > 0 { options.width } else { 1024 };
+            let height = if options.height > 0 { options.height } else { 1024 };
+            
+            if is_schnell {
+                // flux.1-schnell: 无 cfg_scale, steps=4
+                let steps = options.steps.map(|v| v.clamp(1, 50)).unwrap_or(4);
+                serde_json::json!({
+                    "prompt": &options.prompt,
+                    "width": width,
+                    "height": height,
+                    "seed": options.seed.unwrap_or(0),
+                    "steps": steps,
+                })
+            } else if is_dev {
+                // flux.1-dev: 有 cfg_scale, steps>=5
+                let cfg_scale = options.guidance_scale.map(|v| v.clamp(1.0, 10.0)).unwrap_or(3.5);
+                let steps = options.steps.map(|v| v.clamp(5, 50)).unwrap_or(20);
+                serde_json::json!({
+                    "prompt": &options.prompt,
+                    "width": width,
+                    "height": height,
+                    "cfg_scale": cfg_scale,
+                    "seed": options.seed.unwrap_or(0),
+                    "steps": steps,
+                })
+            } else {
+                // flux.2-klein-4b: cfg_scale <= 1, steps=4
+                let cfg_scale = options.guidance_scale.map(|v| v.clamp(0.0, 1.0)).unwrap_or(1.0);
+                let steps = options.steps.map(|v| v.clamp(1, 50)).unwrap_or(4);
+                serde_json::json!({
+                    "prompt": &options.prompt,
+                    "width": width,
+                    "height": height,
+                    "cfg_scale": cfg_scale,
+                    "seed": options.seed.unwrap_or(0),
+                    "steps": steps,
+                })
+            }
+        } else if is_kontext {
+            // flux.1-kontext-dev: 图生图，需要 image 参数
+            // 暂时不支持，返回错误
+            return Err(ProviderError::InvalidResponse(
+                "flux.1-kontext-dev 模型需要输入图片，当前仅支持文生图".to_string()
+            ));
         } else {
-            "1:1".to_string()
+            // 默认使用 width/height 格式
+            let width = if options.width > 0 { options.width } else { 1024 };
+            let height = if options.height > 0 { options.height } else { 1024 };
+            let steps = options.steps.map(|v| v.clamp(1, 50)).unwrap_or(4);
+            serde_json::json!({
+                "prompt": &options.prompt,
+                "width": width,
+                "height": height,
+                "seed": options.seed.unwrap_or(0),
+                "steps": steps,
+            })
         };
-
-        let request_body = serde_json::json!({
-            "prompt": &options.prompt,
-            "cfg_scale": options.guidance_scale.unwrap_or(5.0),
-            "aspect_ratio": aspect_ratio,
-            "seed": options.seed.unwrap_or(0),
-            "steps": options.steps.unwrap_or(50),
-            "temperature": 0,
-            "negative_prompt": "",
-        });
 
         let url = format!("https://ai.api.nvidia.com/v1/genai/{}", model);
         crate::log_message(&format!("[NVIDIA] 请求接口: POST {}", url));
@@ -91,11 +144,16 @@ impl ImageProvider for NvidiaProvider {
             .await
             .map_err(|e| ProviderError::InvalidResponse(e.to_string()))?;
 
-        // 获取 base64 图片数据
+        crate::log_message(&format!("[NVIDIA] 响应内容: {}", serde_json::to_string(&result).unwrap_or_default()));
+
+        // 获取 base64 图片数据 - NVIDIA 响应格式: {"artifacts": [{"base64": "...", "finishReason": "SUCCESS", "seed": 123}]}
         let base64_data = result
-            .get("image")
-            .and_then(|i| i.as_str())
-            .ok_or_else(|| ProviderError::InvalidResponse("响应中不包含图片数据".to_string()))?;
+            .get("artifacts")
+            .and_then(|a| a.as_array())
+            .and_then(|arr| arr.first())
+            .and_then(|artifact| artifact.get("base64"))
+            .and_then(|b| b.as_str())
+            .ok_or_else(|| ProviderError::InvalidResponse(format!("响应中不包含图片数据，实际响应: {:?}", result)))?;
 
         // 解码并保存图片
         let image_data = base64::Engine::decode(

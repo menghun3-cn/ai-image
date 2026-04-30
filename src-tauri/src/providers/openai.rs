@@ -23,16 +23,13 @@ impl ImageProvider for OpenAiProvider {
 
     fn list_models(&self) -> Vec<String> {
         vec![
-            "gpt-image-2".to_string(),
-            "gpt-image-1.5".to_string(),
-            "gpt-image-1-mini".to_string(),
             "gpt-image-1".to_string(),
-            "chatgpt-image-latest".to_string(),
+            "dall-e-3".to_string(),
         ]
     }
 
     async fn generate(&self, options: &GenerationOptions) -> Result<GenerationResult> {
-        let model = options.model.as_deref().unwrap_or("gpt-image-2");
+        let model = options.model.as_deref().unwrap_or("gpt-image-1");
 
         // 脱敏显示 API Key 前15位
         let key_preview = if self.config.api_key.len() > 15 {

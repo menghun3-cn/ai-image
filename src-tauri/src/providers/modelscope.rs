@@ -26,7 +26,6 @@ impl ImageProvider for ModelScopeProvider {
     fn list_models(&self) -> Vec<String> {
         vec![
             "Qwen/Qwen-Image".to_string(),
-            "damo/cv_diffusion_text-to-image".to_string(),
         ]
     }
 

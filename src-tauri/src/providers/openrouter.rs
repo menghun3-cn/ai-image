@@ -24,17 +24,7 @@ impl ImageProvider for OpenRouterProvider {
 
     fn list_models(&self) -> Vec<String> {
         vec![
-            "openrouter/auto".to_string(),
             "bytedance-seed/seedream-4.5".to_string(),
-            "sourceful/riverflow-v2-pro".to_string(),
-            "sourceful/riverflow-v2-fast".to_string(),
-            "black-forest-labs/flux.2-klein-4b".to_string(),
-            "black-forest-labs/flux.2-max".to_string(),
-            "sourceful/riverflow-v2-max-preview".to_string(),
-            "sourceful/riverflow-v2-standard-preview".to_string(),
-            "sourceful/riverflow-v2-fast-preview".to_string(),
-            "black-forest-labs/flux.2-flex".to_string(),
-            "black-forest-labs/flux.2-pro".to_string(),
             "openai/gpt-image-1".to_string(),
         ]
     }

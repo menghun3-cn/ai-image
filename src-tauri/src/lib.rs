@@ -6,6 +6,7 @@ use std::sync::Mutex;
 
 pub mod commands;
 pub mod config;
+pub mod config_store;
 pub mod error;
 pub mod providers;
 pub mod types;

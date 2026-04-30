@@ -23,12 +23,12 @@ impl ImageProvider for GeminiProvider {
 
     fn list_models(&self) -> Vec<String> {
         vec![
-            "gemini-2.5-flash-image".to_string(),
+            "gemini-2.0-flash-exp-image-generation".to_string(),
         ]
     }
 
     async fn generate(&self, options: &GenerationOptions) -> Result<GenerationResult> {
-        let model = options.model.as_deref().unwrap_or("gemini-2.5-flash-image");
+        let model = options.model.as_deref().unwrap_or("gemini-2.0-flash-exp-image-generation");
 
         // 脱敏显示 API Key 前15位
         let key_preview = if self.config.api_key.len() > 15 {
