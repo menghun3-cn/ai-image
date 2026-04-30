@@ -1,18 +1,41 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from "vue";
+import { ref, onMounted, watch, nextTick } from "vue";
 import { loadConfig, saveConfig } from "@/lib/tauri";
 import type { AppConfig } from "@/lib/tauri";
-import { SaveIcon, CheckIcon, InfoIcon, SlidersIcon, KeyIcon, GlobeIcon, FolderIcon, EyeIcon, EyeOffIcon } from "lucide-vue-next";
+import { InfoIcon, SlidersIcon, KeyIcon, GlobeIcon, FolderIcon, EyeIcon, EyeOffIcon } from "lucide-vue-next";
 
 const config = ref<AppConfig | null>(null);
-const isSaving = ref(false);
-const saveSuccess = ref(false);
 const activeTab = ref(localStorage.getItem("lastSettingsTab") || "api");
+const saveError = ref<string | null>(null);
 
 // 监听标签变化，持久化到 localStorage
 watch(activeTab, (newTab) => {
   localStorage.setItem("lastSettingsTab", newTab);
 });
+
+// 监听配置变化，自动保存
+let isLoading = true;
+watch(
+  config,
+  async (newConfig, oldConfig) => {
+    // 跳过初始加载时的保存
+    if (isLoading || !oldConfig || !newConfig) {
+      isLoading = false;
+      return;
+    }
+    
+    // 延迟保存，避免频繁写入
+    await nextTick();
+    try {
+      await saveConfig(newConfig);
+      saveError.value = null;
+    } catch (e) {
+      console.error("自动保存失败:", e);
+      saveError.value = String(e);
+    }
+  },
+  { deep: true }
+);
 
 // 控制每个 API Key 的显示/隐藏状态
 const showKeys = ref({
@@ -34,40 +57,22 @@ const tauriVersion = "2.10.3";
 onMounted(async () => {
   try {
     config.value = await loadConfig();
+    // 标记加载完成
+    isLoading = false;
   } catch (e) {
     console.error("Failed to load config:", e);
     alert("加载配置失败: " + String(e));
   }
 });
 
-async function handleSave() {
-  if (!config.value) return;
-
-  isSaving.value = true;
-  saveSuccess.value = false;
-
-  try {
-    await saveConfig(config.value);
-    saveSuccess.value = true;
-    setTimeout(() => {
-      saveSuccess.value = false;
-    }, 2000);
-  } catch (e) {
-    alert("保存失败: " + String(e));
-  } finally {
-    isSaving.value = false;
-  }
-}
-
-function resetToDefaults() {
+async function resetToDefaults() {
   if (!config.value) return;
   if (confirm("确定要重置所有设置为默认值吗？")) {
     config.value.default_steps = 30;
     config.value.default_guidance_scale = 7.5;
     config.value.default_seed = -1;
     config.value.theme = "system";
-    saveSuccess.value = true;
-    setTimeout(() => saveSuccess.value = false, 2000);
+    // 自动保存会触发
   }
 }
 
@@ -104,18 +109,7 @@ const tabs = [
         </button>
       </nav>
       
-      <!-- Save Button in Sidebar -->
-      <div class="p-4 border-t">
-        <button
-          @click="handleSave"
-          :disabled="isSaving || !config"
-          class="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 text-sm font-medium transition-colors"
-        >
-          <CheckIcon v-if="saveSuccess" class="w-4 h-4" />
-          <SaveIcon v-else class="w-4 h-4" />
-          {{ saveSuccess ? "已保存" : isSaving ? "保存中..." : "保存设置" }}
-        </button>
-      </div>
+
     </aside>
 
     <!-- Main Content -->
