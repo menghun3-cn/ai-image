@@ -138,6 +138,11 @@ onMounted(async () => {
     if (store.resultImage && store.status === 'success') {
       imageUrlCache.value = await loadImageUrl(store.resultImage);
     }
+    
+    // 如果正在生成中，恢复进度定时器
+    if (store.isGenerating) {
+      startProgressTimer();
+    }
   } catch (e) {
     console.error("Failed to load config:", e);
   }
