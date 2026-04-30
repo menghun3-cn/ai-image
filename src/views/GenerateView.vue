@@ -59,12 +59,8 @@ const optimizeResult = ref<string | null>(null);
 const showOptimizeModal = ref(false);
 const showImageModal = ref(false);
 
-// 批量生成状态（使用 store 中的 isBatchMode）
+// 批量生成状态
 const batchPrompts = ref("");
-const isBatchGenerating = ref(false);
-const batchProgress = ref({ current: 0, total: 0 });
-const batchResults = ref<Array<{ index: number; prompt: string; success: boolean; image_path?: string; error?: string }>>([]);
-const showBatchResults = ref(false);
 
 // 比例帮助弹窗
 const showRatioHelp = ref(false);
@@ -226,19 +222,16 @@ async function handleBatchGenerate() {
   const prompts = batchPrompts.value.split("\n").filter(p => p.trim());
   if (prompts.length === 0) return;
 
-  isBatchGenerating.value = true;
-  batchProgress.value = { current: 0, total: prompts.length };
-  batchResults.value = [];
-  showBatchResults.value = false;
+  store.startBatchGeneration(prompts.length);
 
   const unlistenProgress = await listen("batch-progress", (event) => {
     const payload = event.payload as { current: number; total: number };
-    batchProgress.value = payload;
+    store.updateBatchProgress(payload.current, payload.total);
   });
 
   const unlistenItem = await listen("batch-item-complete", (event) => {
     const payload = event.payload as { result: { index: number; prompt: string; success: boolean; image_path?: string; error?: string } };
-    batchResults.value.push(payload.result);
+    store.addBatchResult(payload.result);
   });
 
   try {
@@ -251,18 +244,18 @@ async function handleBatchGenerate() {
       height: selectedDimensions.value.height,
     });
 
-    showBatchResults.value = true;
+    store.finishBatchGeneration();
   } catch (e) {
     alert("批量生成失败: " + String(e));
+    store.resetBatchState();
   } finally {
-    isBatchGenerating.value = false;
     unlistenProgress();
     unlistenItem();
   }
 }
 
-const batchSuccessCount = computed(() => batchResults.value.filter(r => r.success).length);
-const batchFailedCount = computed(() => batchResults.value.filter(r => !r.success).length);
+const batchSuccessCount = computed(() => store.batchResults.filter(r => r.success).length);
+const batchFailedCount = computed(() => store.batchResults.filter(r => !r.success).length);
 </script>
 
 <template>
@@ -310,7 +303,7 @@ const batchFailedCount = computed(() => batchResults.value.filter(r => !r.succes
         rows="6"
         class="w-full px-3 py-2 border rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-primary"
         placeholder="每行输入一个提示词，将依次生成多张图片..."
-        :disabled="isBatchGenerating"
+        :disabled="store.isBatchGenerating"
       />
       <p class="text-xs text-muted-foreground mt-1">
         当前 {{ batchPrompts.split('\n').filter(p => p.trim()).length }} 个提示词
@@ -347,7 +340,7 @@ const batchFailedCount = computed(() => batchResults.value.filter(r => !r.succes
         v-model="store.provider"
         @change="(e) => store.setProvider((e.target as HTMLSelectElement).value)"
         class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-        :disabled="store.isGenerating || isBatchGenerating"
+        :disabled="store.isGenerating || store.isBatchGenerating"
       >
         <option v-for="p in providers" :key="p.value" :value="p.value">
           {{ p.label }}
@@ -364,7 +357,7 @@ const batchFailedCount = computed(() => batchResults.value.filter(r => !r.succes
             v-model="useCustomModel"
             type="checkbox"
             class="rounded"
-            :disabled="store.isGenerating || isBatchGenerating"
+            :disabled="store.isGenerating || store.isBatchGenerating"
           />
           自定义模型
         </label>
@@ -374,7 +367,7 @@ const batchFailedCount = computed(() => batchResults.value.filter(r => !r.succes
         v-model="store.model"
         @change="(e) => store.setModel((e.target as HTMLSelectElement).value)"
         class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-        :disabled="store.isGenerating || isBatchGenerating"
+        :disabled="store.isGenerating || store.isBatchGenerating"
       >
         <option v-for="m in store.models" :key="m" :value="m">
           {{ m }}
@@ -388,7 +381,7 @@ const batchFailedCount = computed(() => batchResults.value.filter(r => !r.succes
         type="text"
         class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
         placeholder="输入自定义模型名称"
-        :disabled="store.isGenerating || isBatchGenerating"
+        :disabled="store.isGenerating || store.isBatchGenerating"
       />
     </div>
 
@@ -404,7 +397,7 @@ const batchFailedCount = computed(() => batchResults.value.filter(r => !r.succes
         v-model="store.aspectRatio"
         @change="(e) => store.setAspectRatio((e.target as HTMLSelectElement).value)"
         class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-        :disabled="store.isGenerating || isBatchGenerating"
+        :disabled="store.isGenerating || store.isBatchGenerating"
       >
         <option v-for="r in aspectRatios" :key="r.value" :value="r.value">
           {{ r.label }} - {{ r.desc }} ({{ r.width }}×{{ r.height }})
@@ -446,12 +439,12 @@ const batchFailedCount = computed(() => batchResults.value.filter(r => !r.succes
     <button
       v-else
       @click="handleBatchGenerate"
-      :disabled="isBatchGenerating || !batchPrompts.trim()"
+      :disabled="store.isBatchGenerating || !batchPrompts.trim()"
       class="w-full py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 flex items-center justify-center gap-2 mb-6"
     >
-      <Loader2Icon v-if="isBatchGenerating" class="w-5 h-5 animate-spin" />
+      <Loader2Icon v-if="store.isBatchGenerating" class="w-5 h-5 animate-spin" />
       <ListIcon v-else class="w-5 h-5" />
-      {{ isBatchGenerating ? `生成中 ${batchProgress.current}/${batchProgress.total}` : "开始批量生成" }}
+      {{ store.isBatchGenerating ? `生成中 ${store.batchProgress.current}/${store.batchProgress.total}` : "开始批量生成" }}
     </button>
 
     <!-- Single Progress -->
@@ -468,15 +461,15 @@ const batchFailedCount = computed(() => batchResults.value.filter(r => !r.succes
     </div>
 
     <!-- Batch Progress -->
-    <div v-if="store.isBatchMode && isBatchGenerating" class="mb-6">
+    <div v-if="store.isBatchMode && store.isBatchGenerating" class="mb-6">
       <div class="h-2 bg-muted rounded-full overflow-hidden">
         <div
           class="h-full bg-primary transition-all duration-300"
-          :style="{ width: `${(batchProgress.current / batchProgress.total) * 100}%` }"
+          :style="{ width: `${(store.batchProgress.current / store.batchProgress.total) * 100}%` }"
         />
       </div>
       <p class="text-sm text-muted-foreground mt-2 text-center">
-        进度: {{ batchProgress.current }} / {{ batchProgress.total }}
+        进度: {{ store.batchProgress.current }} / {{ store.batchProgress.total }}
       </p>
     </div>
 
@@ -540,18 +533,18 @@ const batchFailedCount = computed(() => batchResults.value.filter(r => !r.succes
     </div>
 
     <!-- Batch Results -->
-    <div v-if="store.isBatchMode && showBatchResults" class="border rounded-lg p-4 mb-6">
+    <div v-if="store.isBatchMode && store.showBatchResults" class="border rounded-lg p-4 mb-6">
       <div class="flex items-center justify-between mb-4">
         <h3 class="font-medium">批量生成结果</h3>
         <div class="flex gap-4 text-sm">
           <span class="text-green-600">成功: {{ batchSuccessCount }}</span>
           <span class="text-red-600">失败: {{ batchFailedCount }}</span>
-          <span class="text-muted-foreground">总计: {{ batchResults.length }}</span>
+          <span class="text-muted-foreground">总计: {{ store.batchResults.length }}</span>
         </div>
       </div>
       <div class="max-h-60 overflow-auto space-y-2">
         <div
-          v-for="result in batchResults"
+          v-for="result in store.batchResults"
           :key="result.index"
           class="flex items-center gap-3 p-2 rounded-lg border"
           :class="result.success ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'"

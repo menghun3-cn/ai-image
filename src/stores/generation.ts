@@ -21,6 +21,12 @@ export const useGenerationStore = defineStore("generation", () => {
   const outputDir = ref("images");
   const isBatchMode = ref(localStorage.getItem("lastBatchMode") === "true");
 
+  // 批量生成状态
+  const isBatchGenerating = ref(false);
+  const batchProgress = ref({ current: 0, total: 0 });
+  const batchResults = ref<Array<{ index: number; prompt: string; success: boolean; image_path?: string; error?: string }>>([]);
+  const showBatchResults = ref(false);
+
   // 优化状态
   const isOptimizing = ref(false);
   const optimizeResult = ref<OptimizeResult | null>(null);
@@ -133,6 +139,34 @@ export const useGenerationStore = defineStore("generation", () => {
     generationElapsedTime.value = 0;
   }
 
+  // 批量生成方法
+  function startBatchGeneration(total: number) {
+    isBatchGenerating.value = true;
+    batchProgress.value = { current: 0, total };
+    batchResults.value = [];
+    showBatchResults.value = false;
+  }
+
+  function updateBatchProgress(current: number, total: number) {
+    batchProgress.value = { current, total };
+  }
+
+  function addBatchResult(result: { index: number; prompt: string; success: boolean; image_path?: string; error?: string }) {
+    batchResults.value.push(result);
+  }
+
+  function finishBatchGeneration() {
+    isBatchGenerating.value = false;
+    showBatchResults.value = true;
+  }
+
+  function resetBatchState() {
+    isBatchGenerating.value = false;
+    batchProgress.value = { current: 0, total: 0 };
+    batchResults.value = [];
+    showBatchResults.value = false;
+  }
+
   function setConfig(newConfig: AppConfig) {
     config.value = newConfig;
     outputDir.value = newConfig.default_output_dir;
@@ -157,6 +191,11 @@ export const useGenerationStore = defineStore("generation", () => {
     outputDir,
     isBatchMode,
     models,
+    // 批量生成
+    isBatchGenerating,
+    batchProgress,
+    batchResults,
+    showBatchResults,
     // 优化
     isOptimizing,
     optimizeResult,
@@ -175,5 +214,11 @@ export const useGenerationStore = defineStore("generation", () => {
     generationFailed,
     resetState,
     setConfig,
+    // 批量生成方法
+    startBatchGeneration,
+    updateBatchProgress,
+    addBatchResult,
+    finishBatchGeneration,
+    resetBatchState,
   };
 });
