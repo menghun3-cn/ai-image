@@ -1,0 +1,24 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Default permissions",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "shell:allow-open",
+    "fs:default",
+    "fs:allow-read-file",
+    {
+      "identifier": "fs:scope",
+      "allow": [
+        {"path": "$HOME/**"},
+        {"path": "$DOCUMENT/**"},
+        {"path": "$DOWNLOAD/**"},
+        {"path": "$DESKTOP/**"},
+        {"path": "$APPDATA/**"},
+        {"path": "$APPLOCALDATA/**"},
+        {"path": "**"}
+      ]
+    }
+  ]
+}

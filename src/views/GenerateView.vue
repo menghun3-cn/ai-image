@@ -1,0 +1,573 @@
+<script setup lang="ts">
+import { ref, computed, onMounted, watch, onUnmounted } from "vue";
+import { useGenerationStore } from "@/stores/generation";
+import { generateImage, batchGenerateImages, optimizePrompt, loadConfig, openOutputDir } from "@/lib/tauri";
+import { Wand2Icon, Loader2Icon, FolderOpenIcon, SparklesIcon, Maximize2Icon, XIcon, ListIcon, HelpCircleIcon, CheckCircle2Icon } from "lucide-vue-next";
+import { listen } from "@tauri-apps/api/event";
+import { readFile } from "@tauri-apps/plugin-fs";
+
+const store = useGenerationStore();
+
+// 图片 URL 缓存
+const imageUrlCache = ref<string | null>(null);
+
+// 辅助函数：将 Uint8Array 转换为 Base64
+function arrayBufferToBase64(buffer: Uint8Array): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  const len = bytes.byteLength;
+  const chunkSize = 0x8000;
+  for (let i = 0; i < len; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode.apply(null, chunk as unknown as number[]);
+  }
+  return btoa(binary);
+}
+
+// 将文件路径转换为可访问的 URL（使用 Base64）
+async function loadImageUrl(path: string): Promise<string> {
+  try {
+    const data = await readFile(path);
+    const ext = path.split('.').pop()?.toLowerCase() || 'png';
+    const mimeType = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' :
+                     ext === 'webp' ? 'image/webp' : 'image/png';
+    const base64 = arrayBufferToBase64(data);
+    return `data:${mimeType};base64,${base64}`;
+  } catch (e) {
+    console.error("[GenerateView] Failed to load image:", path, e);
+    return '';
+  }
+}
+
+// 计算属性：生成结果的图片 URL
+const resultImageUrl = computed(() => {
+  return imageUrlCache.value || '';
+});
+
+// 监听 resultImage 变化，自动加载图片
+watch(() => store.resultImage, async (newPath) => {
+  if (newPath) {
+    imageUrlCache.value = await loadImageUrl(newPath);
+  } else {
+    imageUrlCache.value = null;
+  }
+});
+
+const prompt = ref(localStorage.getItem("lastPrompt") || "");
+const isOptimizing = ref(false);
+const optimizeResult = ref<string | null>(null);
+const showOptimizeModal = ref(false);
+const showImageModal = ref(false);
+
+// 批量生成状态（使用 store 中的 isBatchMode）
+const batchPrompts = ref("");
+const isBatchGenerating = ref(false);
+const batchProgress = ref({ current: 0, total: 0 });
+const batchResults = ref<Array<{ index: number; prompt: string; success: boolean; image_path?: string; error?: string }>>([]);
+const showBatchResults = ref(false);
+
+// 比例帮助弹窗
+const showRatioHelp = ref(false);
+
+// 自定义模型
+const useCustomModel = ref(false);
+const customModelName = ref("");
+
+function updateCustomModel() {
+  if (useCustomModel.value && customModelName.value.trim()) {
+    store.setModel(customModelName.value.trim());
+  }
+}
+
+// 生成进度定时器
+let progressTimer: ReturnType<typeof setInterval> | null = null;
+
+// 启动进度更新定时器
+function startProgressTimer() {
+  stopProgressTimer();
+  progressTimer = setInterval(() => {
+    store.updateElapsedTime();
+  }, 100);
+}
+
+// 停止进度更新定时器
+function stopProgressTimer() {
+  if (progressTimer) {
+    clearInterval(progressTimer);
+    progressTimer = null;
+  }
+}
+
+onUnmounted(() => {
+  stopProgressTimer();
+});
+
+const providers = [
+  { value: "modelscope", label: "ModelScope (阿里云)" },
+  { value: "nvidia", label: "NVIDIA" },
+  { value: "gemini", label: "Google Gemini" },
+  { value: "openrouter", label: "OpenRouter" },
+  { value: "openai", label: "OpenAI" },
+  { value: "siliconflow", label: "硅基流动 (SiliconFlow)" },
+];
+
+const aspectRatios = [
+  { value: "1:1", label: "1:1 正方形", width: 1024, height: 1024, desc: "正方形" },
+  { value: "9:16", label: "9:16 竖屏", width: 720, height: 1280, desc: "竖屏/手机壁纸" },
+  { value: "16:9", label: "16:9 横屏", width: 1280, height: 720, desc: "横屏/宽屏" },
+  { value: "3:4", label: "3:4 竖版", width: 768, height: 1024, desc: "竖版海报" },
+  { value: "2:3", label: "2:3 照片", width: 768, height: 1152, desc: "照片比例" },
+  { value: "3:2", label: "3:2 经典", width: 1152, height: 768, desc: "经典照片比例" },
+  { value: "4:3", label: "4:3 标准", width: 1024, height: 768, desc: "标准显示器" },
+  { value: "21:9", label: "21:9 超宽", width: 1344, height: 576, desc: "超宽屏/横幅" },
+];
+
+const selectedDimensions = computed(() => {
+  return aspectRatios.find(r => r.value === store.aspectRatio) || aspectRatios[0];
+});
+
+onMounted(async () => {
+  try {
+    const config = await loadConfig();
+    store.setConfig(config);
+    if (!store.model && store.models.length > 0) {
+      store.setModel(store.models[0]);
+    }
+    
+    // 恢复上一次成功生成的图片显示
+    if (store.resultImage && store.status === 'success') {
+      imageUrlCache.value = await loadImageUrl(store.resultImage);
+    }
+  } catch (e) {
+    console.error("Failed to load config:", e);
+  }
+});
+
+watch(prompt, (newVal) => {
+  localStorage.setItem("lastPrompt", newVal);
+});
+
+async function handleGenerate() {
+  if (!prompt.value.trim()) return;
+
+  store.startGeneration(prompt.value);
+  startProgressTimer();
+
+  try {
+    const result = await generateImage({
+      prompt: prompt.value,
+      provider: store.provider,
+      model: store.model || undefined,
+      output_dir: store.outputDir,
+      width: selectedDimensions.value.width,
+      height: selectedDimensions.value.height,
+    });
+
+    stopProgressTimer();
+
+    if (result.success && result.image_path) {
+      store.generationSuccess(result.image_path);
+    } else {
+      store.generationFailed(result.error || "生成失败");
+    }
+  } catch (e) {
+    stopProgressTimer();
+    store.generationFailed(e instanceof Error ? e.message : "未知错误");
+  }
+}
+
+async function handleOptimizePrompt() {
+  if (!prompt.value.trim() || isOptimizing.value) return;
+
+  isOptimizing.value = true;
+  optimizeResult.value = null;
+
+  try {
+    const result = await optimizePrompt(prompt.value);
+    if (result.success && result.optimized_prompt) {
+      optimizeResult.value = result.optimized_prompt;
+      showOptimizeModal.value = true;
+    } else {
+      alert("优化失败: " + (result.error || "未知错误"));
+    }
+  } catch (e) {
+    alert("优化请求失败: " + (e instanceof Error ? e.message : "未知错误"));
+  } finally {
+    isOptimizing.value = false;
+  }
+}
+
+function applyOptimizedPrompt() {
+  if (optimizeResult.value) {
+    prompt.value = optimizeResult.value;
+    showOptimizeModal.value = false;
+  }
+}
+
+async function handleOpenOutputDir() {
+  if (store.resultImage) {
+    try {
+      const dir = store.resultImage.substring(0, store.resultImage.lastIndexOf("\\"));
+      await openOutputDir(dir);
+    } catch (e) {
+      console.error("Failed to open output dir:", e);
+    }
+  }
+}
+
+async function handleBatchGenerate() {
+  if (!batchPrompts.value.trim()) return;
+
+  const prompts = batchPrompts.value.split("\n").filter(p => p.trim());
+  if (prompts.length === 0) return;
+
+  isBatchGenerating.value = true;
+  batchProgress.value = { current: 0, total: prompts.length };
+  batchResults.value = [];
+  showBatchResults.value = false;
+
+  const unlistenProgress = await listen("batch-progress", (event) => {
+    const payload = event.payload as { current: number; total: number };
+    batchProgress.value = payload;
+  });
+
+  const unlistenItem = await listen("batch-item-complete", (event) => {
+    const payload = event.payload as { result: { index: number; prompt: string; success: boolean; image_path?: string; error?: string } };
+    batchResults.value.push(payload.result);
+  });
+
+  try {
+    await batchGenerateImages({
+      prompts,
+      provider: store.provider,
+      model: store.model || undefined,
+      output_dir: store.outputDir,
+      width: selectedDimensions.value.width,
+      height: selectedDimensions.value.height,
+    });
+
+    showBatchResults.value = true;
+  } catch (e) {
+    alert("批量生成失败: " + String(e));
+  } finally {
+    isBatchGenerating.value = false;
+    unlistenProgress();
+    unlistenItem();
+  }
+}
+
+const batchSuccessCount = computed(() => batchResults.value.filter(r => r.success).length);
+const batchFailedCount = computed(() => batchResults.value.filter(r => !r.success).length);
+</script>
+
+<template>
+  <div class="p-6 max-w-4xl mx-auto">
+    <div class="flex items-center justify-between mb-6">
+      <h1 class="text-2xl font-bold">AI 图片生成</h1>
+      <button
+        @click="store.setBatchMode(!store.isBatchMode)"
+        class="flex items-center gap-2 px-4 py-2 rounded-lg border hover:bg-muted transition-colors"
+        :class="store.isBatchMode ? 'bg-primary text-primary-foreground' : ''"
+      >
+        <ListIcon class="w-4 h-4" />
+        {{ store.isBatchMode ? '批量模式' : '单图模式' }}
+      </button>
+    </div>
+
+    <!-- Single Mode Prompt Input -->
+    <div v-if="!store.isBatchMode" class="mb-6">
+      <label class="block text-sm font-medium mb-2">提示词</label>
+      <div class="flex gap-2">
+        <textarea
+          v-model="prompt"
+          rows="3"
+          class="flex-1 px-3 py-2 border rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-primary"
+          placeholder="描述你想要生成的图片..."
+          :disabled="store.isGenerating"
+        />
+        <button
+          @click="handleOptimizePrompt"
+          :disabled="isOptimizing || !prompt.trim() || store.isGenerating"
+          class="px-4 py-2 border rounded-lg hover:bg-muted disabled:opacity-50 flex flex-col items-center justify-center gap-1"
+          title="优化提示词"
+        >
+          <Wand2Icon class="w-4 h-4" :class="{ 'animate-spin': isOptimizing }" />
+          <span class="text-xs">优化</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Batch Mode Prompt Input -->
+    <div v-else class="mb-6">
+      <label class="block text-sm font-medium mb-2">批量提示词（每行一个）</label>
+      <textarea
+        v-model="batchPrompts"
+        rows="6"
+        class="w-full px-3 py-2 border rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-primary"
+        placeholder="每行输入一个提示词，将依次生成多张图片..."
+        :disabled="isBatchGenerating"
+      />
+      <p class="text-xs text-muted-foreground mt-1">
+        当前 {{ batchPrompts.split('\n').filter(p => p.trim()).length }} 个提示词
+      </p>
+    </div>
+
+    <!-- Optimize Result Modal -->
+    <div v-if="showOptimizeModal && optimizeResult" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+      <div class="bg-background rounded-lg p-6 max-w-lg w-full mx-4">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="font-medium">提示词优化结果</h3>
+          <button @click="showOptimizeModal = false" class="text-muted-foreground hover:text-foreground">
+            <XIcon class="w-5 h-5" />
+          </button>
+        </div>
+        <div class="bg-muted p-4 rounded-lg mb-4">
+          <p class="text-sm">{{ optimizeResult }}</p>
+        </div>
+        <div class="flex justify-end gap-2">
+          <button @click="showOptimizeModal = false" class="px-4 py-2 border rounded-lg hover:bg-muted">
+            取消
+          </button>
+          <button @click="applyOptimizedPrompt" class="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90">
+            应用优化结果
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Provider Selection -->
+    <div class="mb-6">
+      <label class="block text-sm font-medium mb-2">提供商</label>
+      <select
+        v-model="store.provider"
+        @change="(e) => store.setProvider((e.target as HTMLSelectElement).value)"
+        class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+        :disabled="store.isGenerating || isBatchGenerating"
+      >
+        <option v-for="p in providers" :key="p.value" :value="p.value">
+          {{ p.label }}
+        </option>
+      </select>
+    </div>
+
+    <!-- Model Selection -->
+    <div class="mb-6">
+      <div class="flex items-center justify-between mb-2">
+        <label class="text-sm font-medium">模型</label>
+        <label class="flex items-center gap-2 text-sm">
+          <input
+            v-model="useCustomModel"
+            type="checkbox"
+            class="rounded"
+            :disabled="store.isGenerating || isBatchGenerating"
+          />
+          自定义模型
+        </label>
+      </div>
+      <select
+        v-if="!useCustomModel"
+        v-model="store.model"
+        @change="(e) => store.setModel((e.target as HTMLSelectElement).value)"
+        class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+        :disabled="store.isGenerating || isBatchGenerating"
+      >
+        <option v-for="m in store.models" :key="m" :value="m">
+          {{ m }}
+        </option>
+      </select>
+      <input
+        v-else
+        v-model="customModelName"
+        @blur="updateCustomModel"
+        @keyup.enter="updateCustomModel"
+        type="text"
+        class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+        placeholder="输入自定义模型名称"
+        :disabled="store.isGenerating || isBatchGenerating"
+      />
+    </div>
+
+    <!-- Aspect Ratio -->
+    <div class="mb-6">
+      <div class="flex items-center gap-2 mb-2">
+        <label class="text-sm font-medium">图片比例</label>
+        <button @click="showRatioHelp = true" class="text-muted-foreground hover:text-foreground">
+          <HelpCircleIcon class="w-4 h-4" />
+        </button>
+      </div>
+      <select
+        v-model="store.aspectRatio"
+        @change="(e) => store.setAspectRatio((e.target as HTMLSelectElement).value)"
+        class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+        :disabled="store.isGenerating || isBatchGenerating"
+      >
+        <option v-for="r in aspectRatios" :key="r.value" :value="r.value">
+          {{ r.label }} - {{ r.desc }} ({{ r.width }}×{{ r.height }})
+        </option>
+      </select>
+    </div>
+
+    <!-- Ratio Help Modal -->
+    <div v-if="showRatioHelp" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" @click="showRatioHelp = false">
+      <div class="bg-background rounded-lg p-6 max-w-md w-full mx-4" @click.stop>
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="font-medium">图片比例说明</h3>
+          <button @click="showRatioHelp = false" class="text-muted-foreground hover:text-foreground">
+            <XIcon class="w-5 h-5" />
+          </button>
+        </div>
+        <div class="space-y-2 text-sm">
+          <div v-for="r in aspectRatios" :key="r.value" class="flex justify-between py-1 border-b last:border-0">
+            <span class="font-medium">{{ r.label }}</span>
+            <span class="text-muted-foreground">{{ r.desc }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Single Generate Button -->
+    <button
+      v-if="!store.isBatchMode"
+      @click="handleGenerate"
+      :disabled="store.isGenerating || !prompt.trim()"
+      class="w-full py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 flex items-center justify-center gap-2 mb-6"
+    >
+      <Loader2Icon v-if="store.isGenerating" class="w-5 h-5 animate-spin" />
+      <SparklesIcon v-else class="w-5 h-5" />
+      {{ store.isGenerating ? "生成中..." : "生成图片" }}
+    </button>
+
+    <!-- Batch Generate Button -->
+    <button
+      v-else
+      @click="handleBatchGenerate"
+      :disabled="isBatchGenerating || !batchPrompts.trim()"
+      class="w-full py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 flex items-center justify-center gap-2 mb-6"
+    >
+      <Loader2Icon v-if="isBatchGenerating" class="w-5 h-5 animate-spin" />
+      <ListIcon v-else class="w-5 h-5" />
+      {{ isBatchGenerating ? `生成中 ${batchProgress.current}/${batchProgress.total}` : "开始批量生成" }}
+    </button>
+
+    <!-- Single Progress -->
+    <div v-if="!store.isBatchMode && store.isGenerating" class="mb-6">
+      <div class="h-2 bg-muted rounded-full overflow-hidden">
+        <div
+          class="h-full bg-primary transition-all duration-300"
+          :style="{ width: `${store.progress}%` }"
+        />
+      </div>
+      <p class="text-sm text-muted-foreground mt-2 text-center">
+        已用时: {{ store.formattedElapsedTime }}
+      </p>
+    </div>
+
+    <!-- Batch Progress -->
+    <div v-if="store.isBatchMode && isBatchGenerating" class="mb-6">
+      <div class="h-2 bg-muted rounded-full overflow-hidden">
+        <div
+          class="h-full bg-primary transition-all duration-300"
+          :style="{ width: `${(batchProgress.current / batchProgress.total) * 100}%` }"
+        />
+      </div>
+      <p class="text-sm text-muted-foreground mt-2 text-center">
+        进度: {{ batchProgress.current }} / {{ batchProgress.total }}
+      </p>
+    </div>
+
+    <!-- Single Error -->
+    <div v-if="!store.isBatchMode && store.status === 'error'" class="mb-6 p-4 bg-destructive/10 text-destructive rounded-lg">
+      {{ store.error }}
+    </div>
+
+    <!-- Single Result - 只在生成成功时显示 -->
+    <div v-if="!store.isBatchMode && store.status === 'success' && store.resultImage" class="border rounded-lg p-4">
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <h3 class="font-medium">生成结果</h3>
+          <p class="text-xs text-muted-foreground mt-1">
+            总耗时: {{ store.formattedGenerationDuration }} | 尺寸: {{ selectedDimensions.width }} × {{ selectedDimensions.height }}
+          </p>
+        </div>
+        <button
+          @click="handleOpenOutputDir"
+          class="flex items-center gap-2 text-sm text-primary hover:underline"
+        >
+          <FolderOpenIcon class="w-4 h-4" />
+          打开目录
+        </button>
+      </div>
+      <div class="relative group">
+        <img
+          :src="resultImageUrl"
+          class="max-w-full h-auto rounded-lg cursor-pointer"
+          alt="Generated"
+          @click="showImageModal = true"
+        />
+        <button
+          @click="showImageModal = true"
+          class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity bg-black/50 hover:bg-black/70 text-white p-2 rounded-lg"
+        >
+          <Maximize2Icon class="w-4 h-4" />
+        </button>
+      </div>
+    </div>
+
+    <!-- Image Preview Modal - 只在生成成功时显示 -->
+    <div
+      v-if="showImageModal && store.status === 'success' && store.resultImage"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm"
+      @click="showImageModal = false"
+    >
+      <div class="relative max-w-[90vw] max-h-[90vh] p-4" @click.stop>
+        <img
+          :src="resultImageUrl"
+          alt="Preview"
+          class="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl"
+        />
+        <button
+          @click="showImageModal = false"
+          class="absolute top-6 right-6 w-10 h-10 rounded-full bg-black/50 hover:bg-black/70 text-white flex items-center justify-center transition-colors"
+        >
+          <XIcon class="w-5 h-5" />
+        </button>
+      </div>
+    </div>
+
+    <!-- Batch Results -->
+    <div v-if="store.isBatchMode && showBatchResults" class="border rounded-lg p-4 mb-6">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="font-medium">批量生成结果</h3>
+        <div class="flex gap-4 text-sm">
+          <span class="text-green-600">成功: {{ batchSuccessCount }}</span>
+          <span class="text-red-600">失败: {{ batchFailedCount }}</span>
+          <span class="text-muted-foreground">总计: {{ batchResults.length }}</span>
+        </div>
+      </div>
+      <div class="max-h-60 overflow-auto space-y-2">
+        <div
+          v-for="result in batchResults"
+          :key="result.index"
+          class="flex items-center gap-3 p-2 rounded-lg border"
+          :class="result.success ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'"
+        >
+          <div class="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium"
+            :class="result.success ? 'bg-green-500 text-white' : 'bg-red-500 text-white'"
+          >
+            {{ result.index + 1 }}
+          </div>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm truncate">{{ result.prompt }}</p>
+            <p v-if="!result.success" class="text-xs text-red-600 mt-0.5">{{ result.error }}</p>
+          </div>
+          <div v-if="result.success" class="flex-shrink-0 text-green-600">
+            <CheckCircle2Icon class="w-5 h-5" />
+          </div>
+          <div v-else class="flex-shrink-0 text-red-600">
+            <XIcon class="w-5 h-5" />
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
