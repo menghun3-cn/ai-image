@@ -53,6 +53,27 @@ watch(() => store.resultImage, async (newPath) => {
   }
 });
 
+// 获取批量生成图片的 URL（带缓存）
+async function getBatchImageUrl(path: string): Promise<string> {
+  if (batchImageUrls.value.has(path)) {
+    return batchImageUrls.value.get(path)!;
+  }
+  const url = await loadImageUrl(path);
+  if (url) {
+    batchImageUrls.value.set(path, url);
+  }
+  return url;
+}
+
+// 监听批量结果变化，自动加载图片
+watch(() => store.batchResults, async (results) => {
+  for (const result of results) {
+    if (result.success && result.image_path && !batchImageUrls.value.has(result.image_path)) {
+      await getBatchImageUrl(result.image_path);
+    }
+  }
+}, { deep: true });
+
 const prompt = ref(localStorage.getItem("lastPrompt") || "");
 const isOptimizing = ref(false);
 const optimizeResult = ref<string | null>(null);
@@ -61,6 +82,8 @@ const showImageModal = ref(false);
 
 // 批量生成状态
 const batchPrompts = ref("");
+const batchImageUrls = ref<Map<string, string>>(new Map());
+const selectedBatchImage = ref<string | null>(null);
 
 // 比例帮助弹窗
 const showRatioHelp = ref(false);
@@ -256,6 +279,11 @@ async function handleBatchGenerate() {
 
 const batchSuccessCount = computed(() => store.batchResults.filter(r => r.success).length);
 const batchFailedCount = computed(() => store.batchResults.filter(r => !r.success).length);
+
+// 显示批量图片预览
+function showBatchImageModal(imagePath: string) {
+  selectedBatchImage.value = imagePath;
+}
 </script>
 
 <template>
@@ -542,29 +570,57 @@ const batchFailedCount = computed(() => store.batchResults.filter(r => !r.succes
           <span class="text-muted-foreground">总计: {{ store.batchResults.length }}</span>
         </div>
       </div>
-      <div class="max-h-60 overflow-auto space-y-2">
+      <div class="max-h-96 overflow-auto space-y-3">
         <div
           v-for="result in store.batchResults"
           :key="result.index"
-          class="flex items-center gap-3 p-2 rounded-lg border"
+          class="p-3 rounded-lg border"
           :class="result.success ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'"
         >
-          <div class="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium"
-            :class="result.success ? 'bg-green-500 text-white' : 'bg-red-500 text-white'"
-          >
-            {{ result.index + 1 }}
+          <div class="flex items-center gap-3 mb-2">
+            <div class="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium"
+              :class="result.success ? 'bg-green-500 text-white' : 'bg-red-500 text-white'"
+            >
+              {{ result.index + 1 }}
+            </div>
+            <div class="flex-1 min-w-0">
+              <p class="text-sm truncate">{{ result.prompt }}</p>
+              <p v-if="!result.success" class="text-xs text-red-600 mt-0.5">{{ result.error }}</p>
+            </div>
+            <div v-if="result.success" class="flex-shrink-0 text-green-600">
+              <CheckCircle2Icon class="w-5 h-5" />
+            </div>
+            <div v-else class="flex-shrink-0 text-red-600">
+              <XIcon class="w-5 h-5" />
+            </div>
           </div>
-          <div class="flex-1 min-w-0">
-            <p class="text-sm truncate">{{ result.prompt }}</p>
-            <p v-if="!result.success" class="text-xs text-red-600 mt-0.5">{{ result.error }}</p>
-          </div>
-          <div v-if="result.success" class="flex-shrink-0 text-green-600">
-            <CheckCircle2Icon class="w-5 h-5" />
-          </div>
-          <div v-else class="flex-shrink-0 text-red-600">
-            <XIcon class="w-5 h-5" />
+          <!-- 成功时显示预览图片 -->
+          <div v-if="result.success && result.image_path" class="mt-2">
+            <img
+              :src="batchImageUrls.get(result.image_path) || ''"
+              class="max-w-full h-auto max-h-48 rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+              alt="Generated"
+              @click="showBatchImageModal(result.image_path!)"
+            />
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- Batch Image Preview Modal -->
+    <div v-if="selectedBatchImage" class="fixed inset-0 z-50 flex items-center justify-center bg-black/80" @click="selectedBatchImage = null">
+      <div class="relative max-w-[90vw] max-h-[90vh]" @click.stop>
+        <button
+          @click="selectedBatchImage = null"
+          class="absolute -top-10 right-0 text-white hover:text-gray-300"
+        >
+          <XIcon class="w-6 h-6" />
+        </button>
+        <img
+          :src="batchImageUrls.get(selectedBatchImage) || ''"
+          class="max-w-full max-h-[85vh] rounded-lg"
+          alt="Preview"
+        />
       </div>
     </div>
   </div>
