@@ -1,9 +1,10 @@
 use crate::providers::{create_provider, ImageProvider};
 use crate::types::{GenerationOptions, GenerationResult};
+use crate::config_store;
 
 #[tauri::command]
 pub async fn generate_image(options: GenerationOptions) -> Result<GenerationResult, String> {
-    let config = crate::config::load_config().map_err(|e| e.to_string())?;
+    let config = config_store::load_config_from_store().map_err(|e| e.to_string())?;
 
     let provider_config = match options.provider.as_str() {
         "modelscope" => config.providers.modelscope,

@@ -33,3 +33,4 @@ dist-ssr
 # Images
 images/
 src-tauri/portable/
+dist-portable/

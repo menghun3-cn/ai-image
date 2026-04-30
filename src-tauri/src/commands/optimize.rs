@@ -1,4 +1,5 @@
 use crate::types::{OptimizeResult};
+use crate::config_store;
 use serde::{Deserialize, Serialize};
 
 const SYSTEM_PROMPT: &str = r#"你是一位资深AI绘画关键词优化专家，精通 Stable Diffusion、Midjourney、Flux 及国产AI绘画模型的词汇逻辑与生成机制。你的核心能力是将用户的简单描述转化为电影级、专业级、高可控性的图像生成提示词。
@@ -184,7 +185,7 @@ struct MessageContent {
 
 #[tauri::command]
 pub async fn optimize_prompt(prompt: String) -> Result<OptimizeResult, String> {
-    let config = crate::config::load_config().map_err(|e| e.to_string())?;
+    let config = config_store::load_config_from_store().map_err(|e| e.to_string())?;
     
     if config.providers.openrouter.api_key.is_empty() {
         return Ok(OptimizeResult {

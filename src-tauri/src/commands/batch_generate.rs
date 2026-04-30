@@ -1,5 +1,6 @@
 use crate::providers::{create_provider, ImageProvider};
 use crate::types::GenerationOptions;
+use crate::config_store;
 use serde::{Deserialize, Serialize};
 use tauri::Emitter;
 
@@ -36,7 +37,7 @@ pub async fn batch_generate_images(
     options: BatchGenerationOptions,
     window: tauri::Window,
 ) -> Result<BatchGenerationResult, String> {
-    let config = crate::config::load_config().map_err(|e| e.to_string())?;
+    let config = config_store::load_config_from_store().map_err(|e| e.to_string())?;
 
     let provider_config = match options.provider.as_str() {
         "modelscope" => config.providers.modelscope,
