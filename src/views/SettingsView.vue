@@ -2,7 +2,17 @@
 import { ref, onMounted, watch, nextTick } from "vue";
 import { loadConfig, saveConfig } from "@/lib/tauri";
 import type { AppConfig } from "@/lib/tauri";
-import { InfoIcon, SlidersIcon, KeyIcon, GlobeIcon, FolderIcon, EyeIcon, EyeOffIcon } from "lucide-vue-next";
+import { InfoIcon, SlidersIcon, KeyIcon, GlobeIcon, FolderIcon, EyeIcon, EyeOffIcon, ExternalLinkIcon } from "lucide-vue-next";
+
+// 各平台获取 API Key 的链接
+const providerLinks: Record<string, string> = {
+  openrouter: "https://openrouter.ai/settings/keys",
+  modelscope: "https://modelscope.cn/my/myaccesstoken",
+  nvidia: "https://build.nvidia.com/explore/discover",
+  gemini: "https://aistudio.google.com/apikey",
+  openai: "https://platform.openai.com/api-keys",
+  siliconflow: "https://cloud.siliconflow.cn/me/account/ak",
+};
 
 const config = ref<AppConfig | null>(null);
 const activeTab = ref(localStorage.getItem("lastSettingsTab") || "api");
@@ -134,10 +144,21 @@ const tabs = [
 
           <div class="grid gap-5">
             <div class="p-4 rounded-lg border bg-card">
-              <label class="flex items-center gap-2 text-sm font-medium mb-2">
-                <span class="w-2 h-2 rounded-full bg-green-500"></span>
-                OpenRouter API Key
-              </label>
+              <div class="flex items-center justify-between mb-2">
+                <label class="flex items-center gap-2 text-sm font-medium">
+                  <span class="w-2 h-2 rounded-full bg-green-500"></span>
+                  OpenRouter API Key
+                </label>
+                <a
+                  :href="providerLinks.openrouter"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors"
+                >
+                  <ExternalLinkIcon class="w-3 h-3" />
+                  获取 Key
+                </a>
+              </div>
               <div class="relative">
                 <input
                   v-model="config.providers.openrouter.api_key"
@@ -158,10 +179,21 @@ const tabs = [
             </div>
 
             <div class="p-4 rounded-lg border bg-card">
-              <label class="flex items-center gap-2 text-sm font-medium mb-2">
-                <span class="w-2 h-2 rounded-full bg-blue-500"></span>
-                ModelScope API Key
-              </label>
+              <div class="flex items-center justify-between mb-2">
+                <label class="flex items-center gap-2 text-sm font-medium">
+                  <span class="w-2 h-2 rounded-full bg-blue-500"></span>
+                  ModelScope API Key
+                </label>
+                <a
+                  :href="providerLinks.modelscope"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors"
+                >
+                  <ExternalLinkIcon class="w-3 h-3" />
+                  获取 Key
+                </a>
+              </div>
               <div class="relative">
                 <input
                   v-model="config.providers.modelscope.api_key"
@@ -181,10 +213,21 @@ const tabs = [
             </div>
 
             <div class="p-4 rounded-lg border bg-card">
-              <label class="flex items-center gap-2 text-sm font-medium mb-2">
-                <span class="w-2 h-2 rounded-full bg-purple-500"></span>
-                NVIDIA API Key
-              </label>
+              <div class="flex items-center justify-between mb-2">
+                <label class="flex items-center gap-2 text-sm font-medium">
+                  <span class="w-2 h-2 rounded-full bg-purple-500"></span>
+                  NVIDIA API Key
+                </label>
+                <a
+                  :href="providerLinks.nvidia"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors"
+                >
+                  <ExternalLinkIcon class="w-3 h-3" />
+                  获取 Key
+                </a>
+              </div>
               <div class="relative">
                 <input
                   v-model="config.providers.nvidia.api_key"
@@ -204,10 +247,21 @@ const tabs = [
             </div>
 
             <div class="p-4 rounded-lg border bg-card">
-              <label class="flex items-center gap-2 text-sm font-medium mb-2">
-                <span class="w-2 h-2 rounded-full bg-red-500"></span>
-                Gemini API Key
-              </label>
+              <div class="flex items-center justify-between mb-2">
+                <label class="flex items-center gap-2 text-sm font-medium">
+                  <span class="w-2 h-2 rounded-full bg-red-500"></span>
+                  Gemini API Key
+                </label>
+                <a
+                  :href="providerLinks.gemini"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors"
+                >
+                  <ExternalLinkIcon class="w-3 h-3" />
+                  获取 Key
+                </a>
+              </div>
               <div class="relative">
                 <input
                   v-model="config.providers.gemini.api_key"
@@ -227,10 +281,21 @@ const tabs = [
             </div>
 
             <div class="p-4 rounded-lg border bg-card">
-              <label class="flex items-center gap-2 text-sm font-medium mb-2">
-                <span class="w-2 h-2 rounded-full bg-gray-500"></span>
-                OpenAI API Key
-              </label>
+              <div class="flex items-center justify-between mb-2">
+                <label class="flex items-center gap-2 text-sm font-medium">
+                  <span class="w-2 h-2 rounded-full bg-gray-500"></span>
+                  OpenAI API Key
+                </label>
+                <a
+                  :href="providerLinks.openai"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors"
+                >
+                  <ExternalLinkIcon class="w-3 h-3" />
+                  获取 Key
+                </a>
+              </div>
               <div class="relative">
                 <input
                   v-model="config.providers.openai.api_key"
@@ -250,10 +315,21 @@ const tabs = [
             </div>
 
             <div class="p-4 rounded-lg border bg-card">
-              <label class="flex items-center gap-2 text-sm font-medium mb-2">
-                <span class="w-2 h-2 rounded-full bg-orange-500"></span>
-                SiliconFlow API Key
-              </label>
+              <div class="flex items-center justify-between mb-2">
+                <label class="flex items-center gap-2 text-sm font-medium">
+                  <span class="w-2 h-2 rounded-full bg-orange-500"></span>
+                  SiliconFlow API Key
+                </label>
+                <a
+                  :href="providerLinks.siliconflow"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors"
+                >
+                  <ExternalLinkIcon class="w-3 h-3" />
+                  获取 Key
+                </a>
+              </div>
               <div class="relative">
                 <input
                   v-model="config.providers.siliconflow.api_key"
