@@ -38,3 +38,30 @@ pub struct ImageInfo {
     pub name: String,
     pub time: i64,
 }
+
+// 视频生成相关类型
+#[derive(Debug, Serialize, Deserialize)]
+pub struct VideoGenerationOptions {
+    pub prompt: String,
+    pub output_dir: String,
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+    pub num_frames: Option<u32>,
+    pub frame_rate: Option<f32>,
+    pub seed: Option<u64>,
+    pub negative_prompt: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct VideoGenerationResult {
+    pub success: bool,
+    pub video_path: Option<String>,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct VideoInfo {
+    pub path: String,
+    pub name: String,
+    pub time: i64,
+}

@@ -33,6 +33,8 @@ fn main() {
             commands::load_config,
             commands::save_config,
             commands::get_provider_models,
+            commands::generate_video,
+            commands::get_video_output_dir,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

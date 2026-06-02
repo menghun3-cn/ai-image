@@ -137,3 +137,31 @@ export async function getProviderModels(provider: string): Promise<string[]> {
 export async function batchGenerateImages(options: BatchGenerationOptions): Promise<BatchGenerationResult> {
   return invoke<BatchGenerationResult>("batch_generate_images", { options });
 }
+
+// 视频生成相关
+export interface VideoGenerationOptions {
+  prompt: string;
+  output_dir: string;
+  width?: number;
+  height?: number;
+  num_frames?: number;
+  frame_rate?: number;
+  seed?: number;
+  negative_prompt?: string;
+}
+
+export interface VideoGenerationResult {
+  success: boolean;
+  video_path?: string;
+  error?: string;
+}
+
+export type VideoGenerationStatus = "idle" | "creating" | "processing" | "downloading" | "success" | "error";
+
+export async function generateVideo(options: VideoGenerationOptions): Promise<VideoGenerationResult> {
+  return invoke<VideoGenerationResult>("generate_video", { options });
+}
+
+export async function getVideoOutputDir(): Promise<string> {
+  return invoke<string>("get_video_output_dir");
+}

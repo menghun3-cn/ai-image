@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ImageIcon, SettingsIcon, Grid3X3Icon } from "lucide-vue-next";
+import { ImageIcon, VideoIcon, SettingsIcon, Grid3X3Icon } from "lucide-vue-next";
 
 const router = useRouter();
 const route = useRoute();
@@ -27,6 +27,16 @@ function navigate(path: string) {
         title="生成图片"
       >
         <ImageIcon class="w-5 h-5" />
+      </button>
+      <button
+        @click="navigate('/video')"
+        :class="[
+          'p-3 rounded-lg transition-colors',
+          currentRoute === '/video' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted',
+        ]"
+        title="生成视频"
+      >
+        <VideoIcon class="w-5 h-5" />
       </button>
       <button
         @click="navigate('/gallery')"

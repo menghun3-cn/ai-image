@@ -173,6 +173,50 @@ pub fn get_next_image_path(output_dir: &str) -> crate::error::Result<String> {
     Ok(result_path)
 }
 
+/// 获取下一个视频文件名（按文件数量递增）
+pub fn get_next_video_path(output_dir: &str) -> crate::error::Result<String> {
+    use std::fs;
+    use std::path::Path;
+    
+    // 如果是相对路径，拼接项目根目录
+    let output_path = Path::new(output_dir);
+    let full_output_path = if output_path.is_relative() {
+        get_project_root().join(output_dir)
+    } else {
+        output_path.to_path_buf()
+    };
+    
+    crate::log_message(&format!("[get_next_video_path] 输出目录: {}, 完整路径: {}", output_dir, full_output_path.to_string_lossy()));
+    
+    if !full_output_path.exists() {
+        crate::log_message(&format!("[get_next_video_path] 创建目录: {}", full_output_path.to_string_lossy()));
+        fs::create_dir_all(&full_output_path).map_err(|e| crate::error::ProviderError::FileSystem(e))?;
+    }
+    
+    // 获取现有 mp4 文件数量
+    let existing_count = fs::read_dir(&full_output_path)
+        .map_err(|e| crate::error::ProviderError::FileSystem(e))?
+        .filter_map(|entry| {
+            let entry = entry.ok()?;
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.ends_with(".mp4") {
+                Some(())
+            } else {
+                None
+            }
+        })
+        .count();
+    
+    // 下一个序号 = 现有文件数 + 1
+    let next_number = existing_count + 1;
+    
+    let result_path = format!("{}\\{}.mp4", full_output_path.to_string_lossy(), next_number);
+    crate::log_message(&format!("[get_next_video_path] 现有文件数: {}, 下一个序号: {}, 结果路径: {}", existing_count, next_number, result_path));
+    
+    // 返回完整路径
+    Ok(result_path)
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AppConfig {
     pub providers: ProvidersConfig,

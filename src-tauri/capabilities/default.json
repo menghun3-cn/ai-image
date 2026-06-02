@@ -10,6 +10,10 @@
     "fs:default",
     "fs:allow-read-file",
     {
+      "identifier": "fs:allow-read-file",
+      "allow": [{"path": "$APPLOCALDATA/**"}, {"path": "$HOME/**"}, {"path": "**"}]
+    },
+    {
       "identifier": "fs:scope",
       "allow": [
         {"path": "$HOME/**"},
