@@ -157,7 +157,7 @@ JSON 结构如下：
 - negativePrompt 必须包含常见负面元素（如模糊、变形、多余肢体、文字水印等）"#;
 
 #[derive(Debug, Serialize, Deserialize)]
-struct OpenRouterRequest {
+struct ChatRequest {
     model: String,
     messages: Vec<Message>,
 }
@@ -169,7 +169,7 @@ struct Message {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct OpenRouterResponse {
+struct ChatResponse {
     choices: Vec<Choice>,
 }
 
@@ -186,8 +186,8 @@ struct MessageContent {
 #[tauri::command]
 pub async fn optimize_prompt(prompt: String) -> Result<OptimizeResult, String> {
     let config = config_store::load_config_from_store().map_err(|e| e.to_string())?;
-    
-    if config.providers.openrouter.api_key.is_empty() {
+
+    if config.providers.agnes.api_key.is_empty() {
         return Ok(OptimizeResult {
             success: false,
             optimized_prompt: None,
@@ -195,12 +195,12 @@ pub async fn optimize_prompt(prompt: String) -> Result<OptimizeResult, String> {
             style: None,
             negative_prompt: None,
             tips: None,
-            error: Some("请先配置 OpenRouter API Key".to_string()),
+            error: Some("请先配置 Agnes API Key".to_string()),
         });
     }
 
-    let request = OpenRouterRequest {
-        model: "openrouter/free".to_string(),
+    let request = ChatRequest {
+        model: "agnes-2.0-flash".to_string(),
         messages: vec![
             Message {
                 role: "system".to_string(),
@@ -213,13 +213,13 @@ pub async fn optimize_prompt(prompt: String) -> Result<OptimizeResult, String> {
         ],
     };
 
+    let endpoint = format!("{}/chat/completions", config.providers.agnes.endpoint.trim_end_matches('/'));
+
     let client = reqwest::Client::new();
     let response = client
-        .post(&config.providers.openrouter.endpoint)
-        .header("Authorization", format!("Bearer {}", config.providers.openrouter.api_key))
+        .post(&endpoint)
+        .header("Authorization", format!("Bearer {}", config.providers.agnes.api_key))
         .header("Content-Type", "application/json")
-        .header("HTTP-Referer", "https://ai-image.app")
-        .header("X-Title", "AI Image Generator")
         .json(&request)
         .send()
         .await
@@ -239,7 +239,7 @@ pub async fn optimize_prompt(prompt: String) -> Result<OptimizeResult, String> {
         });
     }
 
-    let result: OpenRouterResponse = response
+    let result: ChatResponse = response
         .json()
         .await
         .map_err(|e| format!("解析响应失败: {}", e))?;
