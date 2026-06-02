@@ -40,6 +40,7 @@ pub async fn batch_generate_images(
     let config = config_store::load_config_from_store().map_err(|e| e.to_string())?;
 
     let provider_config = match options.provider.as_str() {
+        "agnes" => config.providers.agnes,
         "modelscope" => config.providers.modelscope,
         "nvidia" => config.providers.nvidia,
         "gemini" => config.providers.gemini,

@@ -12,6 +12,7 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|_app| {
             // 应用启动时初始化配置
             log_message("[Main] 初始化配置存储...");

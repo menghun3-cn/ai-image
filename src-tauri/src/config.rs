@@ -85,8 +85,15 @@ pub fn load_config() -> anyhow::Result<AppConfig> {
                     "https://api.siliconflow.cn/v1/images/generations",
                 ),
             },
+            agnes: ProviderConfig {
+                api_key: get_var("AGNES_API_KEY", ""),
+                endpoint: get_var(
+                    "AGNES_ENDPOINT",
+                    "https://apihub.agnes-ai.com/v1",
+                ),
+            },
         },
-        default_provider: get_var("DEFAULT_PROVIDER", "openrouter"),
+        default_provider: get_var("DEFAULT_PROVIDER", "agnes"),
         default_output_dir: get_var("DEFAULT_OUTPUT_DIR", "images"),
         default_width: get_var("DEFAULT_WIDTH", "768").parse().unwrap_or(768),
         default_height: get_var("DEFAULT_HEIGHT", "1344").parse().unwrap_or(1344),
@@ -111,6 +118,9 @@ pub fn load_config() -> anyhow::Result<AppConfig> {
             siliconflow: vec![
                 "Kwai-Kolors/Kolors".to_string(),
                 "stabilityai/stable-diffusion-3-5-large".to_string(),
+            ],
+            agnes: vec![
+                "agnes-image-2.1-flash".to_string(),
             ],
         },
     })

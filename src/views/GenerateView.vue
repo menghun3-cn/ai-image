@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, watch, onUnmounted } from "vue";
 import { useGenerationStore } from "@/stores/generation";
 import { generateImage, batchGenerateImages, optimizePrompt, loadConfig, openOutputDir } from "@/lib/tauri";
+import { message } from "@tauri-apps/plugin-dialog";
 import { Wand2Icon, Loader2Icon, FolderOpenIcon, SparklesIcon, Maximize2Icon, XIcon, ListIcon, HelpCircleIcon, CheckCircle2Icon } from "lucide-vue-next";
 import { listen } from "@tauri-apps/api/event";
 import { readFile } from "@tauri-apps/plugin-fs";
@@ -122,6 +123,7 @@ onUnmounted(() => {
 });
 
 const providers = [
+  { value: "agnes", label: "Agnes AI (免费)" },
   { value: "modelscope", label: "ModelScope (阿里云)" },
   { value: "nvidia", label: "NVIDIA" },
   { value: "gemini", label: "Google Gemini" },
@@ -212,10 +214,10 @@ async function handleOptimizePrompt() {
       optimizeResult.value = result.optimized_prompt;
       showOptimizeModal.value = true;
     } else {
-      alert("优化失败: " + (result.error || "未知错误"));
+      await message("优化失败: " + (result.error || "未知错误"), { title: "错误", kind: "error" });
     }
   } catch (e) {
-    alert("优化请求失败: " + (e instanceof Error ? e.message : "未知错误"));
+    await message("优化请求失败: " + (e instanceof Error ? e.message : "未知错误"), { title: "错误", kind: "error" });
   } finally {
     isOptimizing.value = false;
   }
@@ -269,7 +271,7 @@ async function handleBatchGenerate() {
 
     store.finishBatchGeneration();
   } catch (e) {
-    alert("批量生成失败: " + String(e));
+    await message("批量生成失败: " + String(e), { title: "错误", kind: "error" });
     store.resetBatchState();
   } finally {
     unlistenProgress();

@@ -3,6 +3,7 @@ use crate::error::Result;
 use crate::types::GenerationOptions;
 use crate::ProviderConfig;
 
+pub mod agnes;
 pub mod gemini;
 pub mod modelscope;
 pub mod nvidia;
@@ -22,6 +23,7 @@ pub fn create_provider(
     config: ProviderConfig,
 ) -> Option<Box<dyn ImageProvider>> {
     match name {
+        "agnes" => Some(Box::new(agnes::AgnesProvider::new(config))),
         "modelscope" => Some(Box::new(modelscope::ModelScopeProvider::new(config))),
         "nvidia" => Some(Box::new(nvidia::NvidiaProvider::new(config))),
         "gemini" => Some(Box::new(gemini::GeminiProvider::new(config))),

@@ -194,6 +194,8 @@ pub struct AppConfig {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ProvidersConfig {
+    #[serde(default)]
+    pub agnes: ProviderConfig,
     pub modelscope: ProviderConfig,
     pub nvidia: ProviderConfig,
     pub gemini: ProviderConfig,
@@ -208,8 +210,19 @@ pub struct ProviderConfig {
     pub endpoint: String,
 }
 
+impl Default for ProviderConfig {
+    fn default() -> Self {
+        Self {
+            api_key: String::new(),
+            endpoint: String::new(),
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ModelLists {
+    #[serde(default)]
+    pub agnes: Vec<String>,
     pub modelscope: Vec<String>,
     pub nvidia: Vec<String>,
     pub gemini: Vec<String>,

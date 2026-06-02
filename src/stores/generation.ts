@@ -15,7 +15,7 @@ export const useGenerationStore = defineStore("generation", () => {
   const currentPrompt = ref("");
 
   // 生成参数
-  const provider = ref(localStorage.getItem("lastProvider") || "openrouter");
+  const provider = ref(localStorage.getItem("lastProvider") || "agnes");
   const model = ref(localStorage.getItem(`lastModel_${provider.value}`) || "");
   const aspectRatio = ref(localStorage.getItem("lastAspectRatio") || "1:1");
   const outputDir = ref("images");

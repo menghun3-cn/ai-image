@@ -88,6 +88,10 @@ pub fn load_config_from_store() -> anyhow::Result<AppConfig> {
         config.providers.siliconflow.endpoint = default.providers.siliconflow.endpoint;
         needs_save = true;
     }
+    if config.providers.agnes.endpoint.is_empty() {
+        config.providers.agnes.endpoint = default.providers.agnes.endpoint;
+        needs_save = true;
+    }
     
     // 补充其他缺失项
     if config.default_provider.is_empty() {
@@ -126,6 +130,10 @@ pub fn load_config_from_store() -> anyhow::Result<AppConfig> {
     }
     if config.models.siliconflow.is_empty() {
         config.models.siliconflow = default.models.siliconflow;
+        needs_save = true;
+    }
+    if config.models.agnes.is_empty() {
+        config.models.agnes = default.models.agnes;
         needs_save = true;
     }
     
@@ -201,8 +209,12 @@ fn default_config() -> AppConfig {
                 api_key: "".to_string(),
                 endpoint: "https://api.siliconflow.cn/v1/images/generations".to_string(),
             },
+            agnes: ProviderConfig {
+                api_key: "".to_string(),
+                endpoint: "https://apihub.agnes-ai.com/v1".to_string(),
+            },
         },
-        default_provider: "openrouter".to_string(),
+        default_provider: "agnes".to_string(),
         default_output_dir: "images".to_string(),
         default_width: 768,
         default_height: 1344,
@@ -234,6 +246,9 @@ fn default_models() -> ModelLists {
         openai: vec!["gpt-image-2".to_string()],
         siliconflow: vec![
             "Kwai-Kolors/Kolors".to_string(),
+        ],
+        agnes: vec![
+            "agnes-image-2.1-flash".to_string(),
         ],
     }
 }

@@ -2,10 +2,12 @@
 import { ref, onMounted, watch, nextTick } from "vue";
 import { loadConfig, saveConfig } from "@/lib/tauri";
 import type { AppConfig } from "@/lib/tauri";
+import { message, confirm } from "@tauri-apps/plugin-dialog";
 import { InfoIcon, SlidersIcon, KeyIcon, GlobeIcon, FolderIcon, EyeIcon, EyeOffIcon, ExternalLinkIcon } from "lucide-vue-next";
 
 // 各平台获取 API Key 的链接
 const providerLinks: Record<string, string> = {
+  agnes: "https://platform.agnes-ai.com/",
   openrouter: "https://openrouter.ai/settings/keys",
   modelscope: "https://modelscope.cn/my/myaccesstoken",
   nvidia: "https://build.nvidia.com/explore/discover",
@@ -49,6 +51,7 @@ watch(
 
 // 控制每个 API Key 的显示/隐藏状态
 const showKeys = ref({
+  agnes: false,
   openrouter: false,
   modelscope: false,
   nvidia: false,
@@ -71,13 +74,14 @@ onMounted(async () => {
     isLoading = false;
   } catch (e) {
     console.error("Failed to load config:", e);
-    alert("加载配置失败: " + String(e));
+    await message("加载配置失败: " + String(e), { title: "错误", kind: "error" });
   }
 });
 
 async function resetToDefaults() {
   if (!config.value) return;
-  if (confirm("确定要重置所有设置为默认值吗？")) {
+  const confirmed = await confirm("确定要重置所有设置为默认值吗？", { title: "确认", kind: "warning" });
+  if (confirmed) {
     config.value.default_steps = 30;
     config.value.default_guidance_scale = 7.5;
     config.value.default_seed = -1;
@@ -143,6 +147,41 @@ const tabs = [
           </div>
 
           <div class="grid gap-5">
+            <div class="p-4 rounded-lg border bg-card">
+              <div class="flex items-center justify-between mb-2">
+                <label class="flex items-center gap-2 text-sm font-medium">
+                  <span class="w-2 h-2 rounded-full bg-pink-500"></span>
+                  Agnes AI API Key
+                </label>
+                <a
+                  :href="providerLinks.agnes"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors"
+                >
+                  <ExternalLinkIcon class="w-3 h-3" />
+                  获取 Key
+                </a>
+              </div>
+              <div class="relative">
+                <input
+                  v-model="config.providers.agnes.api_key"
+                  :type="showKeys.agnes ? 'text' : 'password'"
+                  class="w-full px-3 py-2 pr-10 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm"
+                  placeholder="agnes-..."
+                />
+                <button
+                  type="button"
+                  @click="toggleKeyVisibility('agnes')"
+                  class="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <EyeIcon v-if="showKeys.agnes" class="w-4 h-4" />
+                  <EyeOffIcon v-else class="w-4 h-4" />
+                </button>
+              </div>
+              <p class="text-xs text-muted-foreground mt-1.5">免费使用，推荐首选</p>
+            </div>
+
             <div class="p-4 rounded-lg border bg-card">
               <div class="flex items-center justify-between mb-2">
                 <label class="flex items-center gap-2 text-sm font-medium">
@@ -485,6 +524,7 @@ const tabs = [
                 v-model="config.default_provider"
                 class="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm bg-background"
               >
+                <option value="agnes">Agnes AI (免费)</option>
                 <option value="modelscope">ModelScope (阿里云)</option>
                 <option value="nvidia">NVIDIA</option>
                 <option value="gemini">Google Gemini</option>

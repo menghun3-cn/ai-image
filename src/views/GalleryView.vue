@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from "vue";
 import { getImages, deleteImage, openOutputDir, loadConfig } from "@/lib/tauri";
+import { message, confirm } from "@tauri-apps/plugin-dialog";
 import { TrashIcon, FolderOpenIcon, RefreshCwIcon, ImageIcon, ChevronLeftIcon, ChevronRightIcon, XIcon } from "lucide-vue-next";
 import { formatTime } from "@/lib/utils";
 import { readFile } from "@tauri-apps/plugin-fs";
@@ -109,7 +110,8 @@ async function loadImages() {
 }
 
 async function handleDelete(path: string) {
-  if (!confirm("确定要删除这张图片吗？")) return;
+  const confirmed = await confirm("确定要删除这张图片吗？", { title: "确认删除", kind: "warning" });
+  if (!confirmed) return;
 
   try {
     await deleteImage(path);
@@ -119,7 +121,7 @@ async function handleDelete(path: string) {
     }
     await loadImages();
   } catch (e) {
-    alert("删除失败: " + String(e));
+    await message("删除失败: " + String(e), { title: "错误", kind: "error" });
   }
 }
 
