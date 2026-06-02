@@ -74,6 +74,7 @@ export interface ProvidersConfig {
   openrouter: ProviderConfig;
   openai: ProviderConfig;
   siliconflow: ProviderConfig;
+  agnes: ProviderConfig;
 }
 
 export interface ModelLists {
@@ -83,6 +84,7 @@ export interface ModelLists {
   openrouter: string[];
   openai: string[];
   siliconflow: string[];
+  agnes: string[];
 }
 
 export interface AppConfig {
