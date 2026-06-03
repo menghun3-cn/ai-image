@@ -34,3 +34,4 @@ dist-ssr
 images/
 src-tauri/portable/
 dist-portable/
+video/
