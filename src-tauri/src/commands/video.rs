@@ -21,29 +21,34 @@ pub async fn generate_video(
 
     let provider = AgnesProvider::new(provider_config);
 
-    match provider.generate_video(&options, &app).await {
+    let result = match provider.generate_video(&options, &app).await {
         Ok(result) if result.success => {
-            Ok(VideoGenerationResult {
+            VideoGenerationResult {
                 success: true,
                 video_path: result.video_path,
                 error: None,
-            })
+            }
         }
         Ok(result) => {
-            Ok(VideoGenerationResult {
+            VideoGenerationResult {
                 success: false,
                 video_path: None,
                 error: result.error,
-            })
+            }
         }
         Err(e) => {
-            Ok(VideoGenerationResult {
+            VideoGenerationResult {
                 success: false,
                 video_path: None,
                 error: Some(e.to_string()),
-            })
+            }
         }
-    }
+    };
+
+    // 打印返回结果到日志
+    crate::log_message(&format!("[Generate Video] 返回结果: {}", serde_json::to_string(&result).unwrap_or_default()));
+    
+    Ok(result)
 }
 
 #[tauri::command]

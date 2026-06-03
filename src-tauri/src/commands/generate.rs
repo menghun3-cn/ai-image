@@ -31,12 +31,15 @@ pub async fn generate_image(options: GenerationOptions) -> Result<GenerationResu
     for attempt in 0..=1 {
         match provider.generate(&options).await {
             Ok(result) if result.success => {
-                return Ok(GenerationResult {
+                let final_result = GenerationResult {
                     success: true,
-                    image_path: result.image_path,
+                    image_path: result.image_path.clone(),
                     error: None,
                     retries: Some(attempt),
-                });
+                };
+                // 打印返回结果到日志
+                crate::log_message(&format!("[Generate Image] 返回结果: {}", serde_json::to_string(&final_result).unwrap_or_default()));
+                return Ok(final_result);
             }
             Ok(result) => {
                 last_result = GenerationResult {
@@ -61,5 +64,7 @@ pub async fn generate_image(options: GenerationOptions) -> Result<GenerationResu
         }
     }
 
+    // 打印最终失败结果到日志
+    crate::log_message(&format!("[Generate Image] 返回结果: {}", serde_json::to_string(&last_result).unwrap_or_default()));
     Ok(last_result)
 }

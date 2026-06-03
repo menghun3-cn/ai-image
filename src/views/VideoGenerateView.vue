@@ -817,7 +817,7 @@ function getStatusText() {
         <!-- Video Info -->
         <div v-if="resultVideoPath" class="p-4 border rounded-lg space-y-2">
           <p class="text-sm font-medium">视频信息</p>
-          <p class="text-xs text-muted-foreground break-all">{{ resultVideoPath.replace(/^.*[\\/]/, '/video/') }}</p>
+          <p class="text-xs text-muted-foreground break-all">/{{ videoOutputDir }}/{{ resultVideoPath.split(/[\\/]/).pop() }}</p>
         </div>
       </div>
     </div>
