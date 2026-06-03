@@ -102,6 +102,10 @@ pub fn load_config_from_store() -> anyhow::Result<AppConfig> {
         config.default_output_dir = default.default_output_dir;
         needs_save = true;
     }
+    if config.default_video_output_dir.is_empty() {
+        config.default_video_output_dir = default.default_video_output_dir;
+        needs_save = true;
+    }
     if config.theme.is_empty() {
         config.theme = default.theme;
         needs_save = true;
@@ -216,6 +220,7 @@ fn default_config() -> AppConfig {
         },
         default_provider: "agnes".to_string(),
         default_output_dir: "images".to_string(),
+        default_video_output_dir: "video".to_string(),
         default_width: 768,
         default_height: 1344,
         default_steps: Some(30),

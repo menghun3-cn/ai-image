@@ -91,6 +91,7 @@ export interface AppConfig {
   providers: ProvidersConfig;
   default_provider: string;
   default_output_dir: string;
+  default_video_output_dir: string;
   default_width: number;
   default_height: number;
   proxy: string;

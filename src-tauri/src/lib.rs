@@ -222,6 +222,8 @@ pub struct AppConfig {
     pub providers: ProvidersConfig,
     pub default_provider: String,
     pub default_output_dir: String,
+    #[serde(default)]
+    pub default_video_output_dir: String,
     pub default_width: u32,
     pub default_height: u32,
     pub proxy: String,

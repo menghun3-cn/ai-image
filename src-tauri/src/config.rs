@@ -95,6 +95,7 @@ pub fn load_config() -> anyhow::Result<AppConfig> {
         },
         default_provider: get_var("DEFAULT_PROVIDER", "agnes"),
         default_output_dir: get_var("DEFAULT_OUTPUT_DIR", "images"),
+        default_video_output_dir: get_var("DEFAULT_VIDEO_OUTPUT_DIR", "video"),
         default_width: get_var("DEFAULT_WIDTH", "768").parse().unwrap_or(768),
         default_height: get_var("DEFAULT_HEIGHT", "1344").parse().unwrap_or(1344),
         default_steps: get_var("DEFAULT_STEPS", "30").parse().ok(),
