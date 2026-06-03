@@ -1,12 +1,14 @@
-use async_trait::async_trait;
 use crate::error::{ProviderError, Result};
 use crate::providers::ImageProvider;
-use crate::types::{GenerationOptions, GenerationResult, VideoGenerationOptions, VideoGenerationResult};
+use crate::types::{
+    GenerationOptions, GenerationResult, VideoGenerationOptions, VideoGenerationResult,
+};
 use crate::ProviderConfig;
+use async_trait::async_trait;
 use std::path::Path;
 use std::time::Duration;
-use tokio::time::sleep;
 use tauri::Emitter;
+use tokio::time::sleep;
 
 pub struct AgnesProvider {
     config: ProviderConfig,
@@ -25,9 +27,7 @@ impl ImageProvider for AgnesProvider {
     }
 
     fn list_models(&self) -> Vec<String> {
-        vec![
-            "agnes-image-2.1-flash".to_string(),
-        ]
+        vec!["agnes-image-2.1-flash".to_string()]
     }
 
     async fn generate(&self, options: &GenerationOptions) -> Result<GenerationResult> {
@@ -55,11 +55,17 @@ impl ImageProvider for AgnesProvider {
         let endpoint = if self.config.endpoint.is_empty() {
             "https://apihub.agnes-ai.com/v1/images/generations".to_string()
         } else {
-            format!("{}/images/generations", self.config.endpoint.trim_end_matches('/'))
+            format!(
+                "{}/images/generations",
+                self.config.endpoint.trim_end_matches('/')
+            )
         };
 
         crate::log_message(&format!("[Agnes] 请求接口: POST {}", endpoint));
-        crate::log_message(&format!("[Agnes] 请求体: {}", serde_json::to_string(&request_body).unwrap_or_default()));
+        crate::log_message(&format!(
+            "[Agnes] 请求体: {}",
+            serde_json::to_string(&request_body).unwrap_or_default()
+        ));
         crate::log_message(&format!("[Agnes] API Key: {}", key_preview));
 
         let client = reqwest::Client::builder()
@@ -81,7 +87,11 @@ impl ImageProvider for AgnesProvider {
             let text = response.text().await.unwrap_or_default();
             return Err(ProviderError::Api {
                 status: status.as_u16(),
-                message: format!("Agnes API Error: {} - {}", status, &text[..text.len().min(200)]),
+                message: format!(
+                    "Agnes API Error: {} - {}",
+                    status,
+                    &text[..text.len().min(200)]
+                ),
             });
         }
 
@@ -104,17 +114,17 @@ impl ImageProvider for AgnesProvider {
             .and_then(|d| d.as_array())
             .and_then(|arr| arr.first())
             .and_then(|item| item.get("b64_json"))
-            .and_then(|b| b.as_str()) {
-            base64::Engine::decode(
-                &base64::engine::general_purpose::STANDARD,
-                b64_json
-            ).map_err(|e| ProviderError::InvalidResponse(format!("Base64 解码失败: {}", e)))?
+            .and_then(|b| b.as_str())
+        {
+            base64::Engine::decode(&base64::engine::general_purpose::STANDARD, b64_json)
+                .map_err(|e| ProviderError::InvalidResponse(format!("Base64 解码失败: {}", e)))?
         } else if let Some(url) = result
             .get("data")
             .and_then(|d| d.as_array())
             .and_then(|arr| arr.first())
             .and_then(|item| item.get("url"))
-            .and_then(|u| u.as_str()) {
+            .and_then(|u| u.as_str())
+        {
             let image_response = client
                 .get(url)
                 .send()
@@ -134,7 +144,9 @@ impl ImageProvider for AgnesProvider {
                 .map_err(|e| ProviderError::Network(e))?
                 .to_vec()
         } else {
-            return Err(ProviderError::InvalidResponse("响应中未找到图片数据".to_string()));
+            return Err(ProviderError::InvalidResponse(
+                "响应中未找到图片数据".to_string(),
+            ));
         };
 
         tokio::fs::write(&image_path, image_data)
@@ -168,7 +180,10 @@ impl AgnesProvider {
         // 本地文件路径，读取并转为 Base64
         let path = std::path::Path::new(image_input);
         if !path.exists() {
-            return Err(ProviderError::InvalidResponse(format!("图片文件不存在: {}", image_input)));
+            return Err(ProviderError::InvalidResponse(format!(
+                "图片文件不存在: {}",
+                image_input
+            )));
         }
 
         let image_data = tokio::fs::read(path)
@@ -184,15 +199,17 @@ impl AgnesProvider {
             _ => "image/png",
         };
 
-        let base64_data = base64::Engine::encode(
-            &base64::engine::general_purpose::STANDARD,
-            &image_data
-        );
+        let base64_data =
+            base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &image_data);
 
         Ok(format!("data:{};base64,{}", mime_type, base64_data))
     }
 
-    pub async fn generate_video(&self, options: &VideoGenerationOptions, app: &tauri::AppHandle) -> Result<VideoGenerationResult> {
+    pub async fn generate_video(
+        &self,
+        options: &VideoGenerationOptions,
+        app: &tauri::AppHandle,
+    ) -> Result<VideoGenerationResult> {
         let model = "agnes-video-v2.0";
 
         let key_preview = if self.config.api_key.len() > 15 {
@@ -203,7 +220,8 @@ impl AgnesProvider {
 
         // 判断是否为图生视频模式
         let image_mode = options.image_mode.as_deref().unwrap_or("text");
-        let is_image_to_video = image_mode != "text" && (options.image.is_some() || options.images.is_some());
+        let is_image_to_video =
+            image_mode != "text" && (options.image.is_some() || options.images.is_some());
 
         // 构建请求体，只添加非空参数
         let mut request_body = serde_json::json!({
@@ -262,7 +280,11 @@ impl AgnesProvider {
                         }
 
                         request_body["extra_body"] = extra_body;
-                        crate::log_message(&format!("[Agnes Video] {}模式，已处理 {} 张图片", image_mode, processed_images.len()));
+                        crate::log_message(&format!(
+                            "[Agnes Video] {}模式，已处理 {} 张图片",
+                            image_mode,
+                            processed_images.len()
+                        ));
                     }
                 }
                 _ => {}
@@ -275,10 +297,22 @@ impl AgnesProvider {
             format!("{}/videos", self.config.endpoint.trim_end_matches('/'))
         };
 
-        crate::log_message(&format!("[Agnes Video] ========== 开始视频生成任务 =========="));
-        crate::log_message(&format!("[Agnes Video] 模式: {}", if is_image_to_video { "图生视频" } else { "文生视频" }));
+        crate::log_message(&format!(
+            "[Agnes Video] ========== 开始视频生成任务 =========="
+        ));
+        crate::log_message(&format!(
+            "[Agnes Video] 模式: {}",
+            if is_image_to_video {
+                "图生视频"
+            } else {
+                "文生视频"
+            }
+        ));
         crate::log_message(&format!("[Agnes Video] 创建任务: POST {}", create_endpoint));
-        crate::log_message(&format!("[Agnes Video] 请求体: {}", serde_json::to_string(&request_body).unwrap_or_default()));
+        crate::log_message(&format!(
+            "[Agnes Video] 请求体: {}",
+            serde_json::to_string(&request_body).unwrap_or_default()
+        ));
         crate::log_message(&format!("[Agnes Video] API Key: {}", key_preview));
 
         let client = reqwest::Client::builder()
@@ -299,10 +333,17 @@ impl AgnesProvider {
         if !response.status().is_success() {
             let status = response.status();
             let text = response.text().await.unwrap_or_default();
-            crate::log_message(&format!("[Agnes Video] 创建任务失败: HTTP {} - {}", status, text));
+            crate::log_message(&format!(
+                "[Agnes Video] 创建任务失败: HTTP {} - {}",
+                status, text
+            ));
             return Err(ProviderError::Api {
                 status: status.as_u16(),
-                message: format!("Agnes Video API Error: {} - {}", status, &text[..text.len().min(200)]),
+                message: format!(
+                    "Agnes Video API Error: {} - {}",
+                    status,
+                    &text[..text.len().min(200)]
+                ),
             });
         }
 
@@ -322,13 +363,20 @@ impl AgnesProvider {
         let retrieve_endpoint = if self.config.endpoint.is_empty() {
             format!("https://apihub.agnes-ai.com/v1/videos/{}", task_id)
         } else {
-            format!("{}/videos/{}", self.config.endpoint.trim_end_matches('/'), task_id)
+            format!(
+                "{}/videos/{}",
+                self.config.endpoint.trim_end_matches('/'),
+                task_id
+            )
         };
 
         let video_url = loop {
             sleep(Duration::from_secs(5)).await; // 每5秒轮询一次
 
-            crate::log_message(&format!("[Agnes Video] 轮询任务状态: GET {}", retrieve_endpoint));
+            crate::log_message(&format!(
+                "[Agnes Video] 轮询任务状态: GET {}",
+                retrieve_endpoint
+            ));
 
             let poll_response = client
                 .get(&retrieve_endpoint)
@@ -340,10 +388,17 @@ impl AgnesProvider {
             if !poll_response.status().is_success() {
                 let status = poll_response.status();
                 let text = poll_response.text().await.unwrap_or_default();
-                crate::log_message(&format!("[Agnes Video] 轮询任务状态失败: HTTP {} - {}", status, text));
+                crate::log_message(&format!(
+                    "[Agnes Video] 轮询任务状态失败: HTTP {} - {}",
+                    status, text
+                ));
                 return Err(ProviderError::Api {
                     status: status.as_u16(),
-                    message: format!("轮询任务状态失败: {} - {}", status, &text[..text.len().min(200)]),
+                    message: format!(
+                        "轮询任务状态失败: {} - {}",
+                        status,
+                        &text[..text.len().min(200)]
+                    ),
                 });
             }
 
@@ -363,14 +418,23 @@ impl AgnesProvider {
                 .and_then(|p| p.as_i64())
                 .unwrap_or(0) as i32;
 
-            crate::log_message(&format!("[Agnes Video] 任务状态: {}, 进度: {}%", status, progress));
-            crate::log_message(&format!("[Agnes Video] 完整响应: {}", poll_result.to_string()));
+            crate::log_message(&format!(
+                "[Agnes Video] 任务状态: {}, 进度: {}%",
+                status, progress
+            ));
+            crate::log_message(&format!(
+                "[Agnes Video] 完整响应: {}",
+                poll_result.to_string()
+            ));
 
             // 发送进度事件到前端
-            let _ = app.emit("video-generation-progress", serde_json::json!({
-                "status": status,
-                "progress": progress,
-            }));
+            let _ = app.emit(
+                "video-generation-progress",
+                serde_json::json!({
+                    "status": status,
+                    "progress": progress,
+                }),
+            );
 
             match status.to_uppercase().as_str() {
                 "SUCCESS" | "COMPLETED" => {
@@ -378,32 +442,42 @@ impl AgnesProvider {
                     // Agnes API 使用 remixed_from_video_id 而不是 video_url
                     let url_fields = ["video_url", "remixed_from_video_id", "url", "output_url"];
                     let mut found_url: Option<String> = None;
-                    
+
                     for field in &url_fields {
                         if let Some(url_value) = poll_result.get(field) {
-                            crate::log_message(&format!("[Agnes Video] {} 字段值: {:?}", field, url_value));
-                            
+                            crate::log_message(&format!(
+                                "[Agnes Video] {} 字段值: {:?}",
+                                field, url_value
+                            ));
+
                             if let Some(url_str) = url_value.as_str() {
                                 if !url_str.is_empty() {
                                     // 去除可能的反引号包裹
                                     let cleaned_url = url_str.trim_matches('`').to_string();
-                                    crate::log_message(&format!("[Agnes Video] 找到视频URL (来自 {}): {}", field, cleaned_url));
+                                    crate::log_message(&format!(
+                                        "[Agnes Video] 找到视频URL (来自 {}): {}",
+                                        field, cleaned_url
+                                    ));
                                     found_url = Some(cleaned_url);
                                     break;
                                 }
                             }
                         }
                     }
-                    
+
                     if let Some(url) = found_url {
                         break url;
                     }
-                    
+
                     // 如果没有找到URL，记录错误
-                    crate::log_message(&format!("[Agnes Video] 响应内容: {}", poll_result.to_string()));
-                    return Err(ProviderError::InvalidResponse(
-                        format!("响应中未找到有效的视频URL。响应内容: {}", poll_result.to_string())
+                    crate::log_message(&format!(
+                        "[Agnes Video] 响应内容: {}",
+                        poll_result.to_string()
                     ));
+                    return Err(ProviderError::InvalidResponse(format!(
+                        "响应中未找到有效的视频URL。响应内容: {}",
+                        poll_result.to_string()
+                    )));
                 }
                 "FAILED" | "FAILURE" | "ERROR" => {
                     return Err(ProviderError::Api {
@@ -415,7 +489,10 @@ impl AgnesProvider {
                     continue; // 继续轮询
                 }
                 _ => {
-                    return Err(ProviderError::InvalidResponse(format!("未知任务状态: {}", status)));
+                    return Err(ProviderError::InvalidResponse(format!(
+                        "未知任务状态: {}",
+                        status
+                    )));
                 }
             }
         };
@@ -457,7 +534,9 @@ impl AgnesProvider {
             .map_err(|e| ProviderError::FileSystem(e))?;
 
         crate::log_message(&format!("[Agnes Video] 视频保存成功: {}", video_path));
-        crate::log_message(&format!("[Agnes Video] ========== 视频生成任务完成 =========="));
+        crate::log_message(&format!(
+            "[Agnes Video] ========== 视频生成任务完成 =========="
+        ));
 
         Ok(VideoGenerationResult {
             success: true,

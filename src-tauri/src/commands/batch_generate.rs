@@ -1,6 +1,6 @@
+use crate::config_store;
 use crate::providers::{create_provider, ImageProvider};
 use crate::types::GenerationOptions;
-use crate::config_store;
 use serde::{Deserialize, Serialize};
 use tauri::Emitter;
 
@@ -60,12 +60,15 @@ pub async fn batch_generate_images(
 
     for (index, prompt) in options.prompts.iter().enumerate() {
         // 发送进度更新
-        let _ = window.emit("batch-progress", serde_json::json!({
-            "current": index + 1,
-            "total": total,
-            "prompt": prompt,
-            "status": "generating"
-        }));
+        let _ = window.emit(
+            "batch-progress",
+            serde_json::json!({
+                "current": index + 1,
+                "total": total,
+                "prompt": prompt,
+                "status": "generating"
+            }),
+        );
 
         let start_time = std::time::Instant::now();
 
@@ -124,21 +127,27 @@ pub async fn batch_generate_images(
         };
 
         // 发送单个结果更新
-        let _ = window.emit("batch-item-complete", serde_json::json!({
-            "index": index,
-            "total": total,
-            "result": &single_result
-        }));
+        let _ = window.emit(
+            "batch-item-complete",
+            serde_json::json!({
+                "index": index,
+                "total": total,
+                "result": &single_result
+            }),
+        );
 
         results.push(single_result);
     }
 
     // 发送完成事件
-    let _ = window.emit("batch-complete", serde_json::json!({
-        "total": total,
-        "success_count": success_count,
-        "failed_count": failed_count
-    }));
+    let _ = window.emit(
+        "batch-complete",
+        serde_json::json!({
+            "total": total,
+            "success_count": success_count,
+            "failed_count": failed_count
+        }),
+    );
 
     Ok(BatchGenerationResult {
         total,

@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
+use std::path::PathBuf;
 use std::sync::Mutex;
 
 pub mod commands;
@@ -47,11 +47,14 @@ pub fn setup_logging() {
     {
         Ok(mut file) => {
             // 直接写入启动日志
-            let start_msg = format!("\n========== AI Image V2 启动 ==========\n时间: {}\n", now.format("%Y-%m-%d %H:%M:%S"));
+            let start_msg = format!(
+                "\n========== AI Image V2 启动 ==========\n时间: {}\n",
+                now.format("%Y-%m-%d %H:%M:%S")
+            );
             let log_line = format!("[{}] {}\n", now.format("%Y-%m-%d %H:%M:%S%.3f"), start_msg);
             let _ = file.write_all(log_line.as_bytes());
             let _ = file.flush();
-            
+
             // 保存到全局
             let mut log_file = LOG_FILE.lock().unwrap();
             *log_file = Some(file);
@@ -133,7 +136,7 @@ pub fn get_project_root() -> std::path::PathBuf {
 pub fn get_next_image_path(output_dir: &str) -> crate::error::Result<String> {
     use std::fs;
     use std::path::Path;
-    
+
     // 如果是相对路径，拼接项目根目录
     let output_path = Path::new(output_dir);
     let full_output_path = if output_path.is_relative() {
@@ -141,14 +144,22 @@ pub fn get_next_image_path(output_dir: &str) -> crate::error::Result<String> {
     } else {
         output_path.to_path_buf()
     };
-    
-    crate::log_message(&format!("[get_next_image_path] 输出目录: {}, 完整路径: {}", output_dir, full_output_path.to_string_lossy()));
-    
+
+    crate::log_message(&format!(
+        "[get_next_image_path] 输出目录: {}, 完整路径: {}",
+        output_dir,
+        full_output_path.to_string_lossy()
+    ));
+
     if !full_output_path.exists() {
-        crate::log_message(&format!("[get_next_image_path] 创建目录: {}", full_output_path.to_string_lossy()));
-        fs::create_dir_all(&full_output_path).map_err(|e| crate::error::ProviderError::FileSystem(e))?;
+        crate::log_message(&format!(
+            "[get_next_image_path] 创建目录: {}",
+            full_output_path.to_string_lossy()
+        ));
+        fs::create_dir_all(&full_output_path)
+            .map_err(|e| crate::error::ProviderError::FileSystem(e))?;
     }
-    
+
     // 获取现有 png 文件数量（与原项目逻辑一致）
     let existing_count = fs::read_dir(&full_output_path)
         .map_err(|e| crate::error::ProviderError::FileSystem(e))?
@@ -162,13 +173,20 @@ pub fn get_next_image_path(output_dir: &str) -> crate::error::Result<String> {
             }
         })
         .count();
-    
+
     // 下一个序号 = 现有文件数 + 1
     let next_number = existing_count + 1;
-    
-    let result_path = format!("{}\\{}.png", full_output_path.to_string_lossy(), next_number);
-    crate::log_message(&format!("[get_next_image_path] 现有文件数: {}, 下一个序号: {}, 结果路径: {}", existing_count, next_number, result_path));
-    
+
+    let result_path = format!(
+        "{}\\{}.png",
+        full_output_path.to_string_lossy(),
+        next_number
+    );
+    crate::log_message(&format!(
+        "[get_next_image_path] 现有文件数: {}, 下一个序号: {}, 结果路径: {}",
+        existing_count, next_number, result_path
+    ));
+
     // 返回完整路径
     Ok(result_path)
 }
@@ -177,7 +195,7 @@ pub fn get_next_image_path(output_dir: &str) -> crate::error::Result<String> {
 pub fn get_next_video_path(output_dir: &str) -> crate::error::Result<String> {
     use std::fs;
     use std::path::Path;
-    
+
     // 如果是相对路径，拼接项目根目录
     let output_path = Path::new(output_dir);
     let full_output_path = if output_path.is_relative() {
@@ -185,14 +203,22 @@ pub fn get_next_video_path(output_dir: &str) -> crate::error::Result<String> {
     } else {
         output_path.to_path_buf()
     };
-    
-    crate::log_message(&format!("[get_next_video_path] 输出目录: {}, 完整路径: {}", output_dir, full_output_path.to_string_lossy()));
-    
+
+    crate::log_message(&format!(
+        "[get_next_video_path] 输出目录: {}, 完整路径: {}",
+        output_dir,
+        full_output_path.to_string_lossy()
+    ));
+
     if !full_output_path.exists() {
-        crate::log_message(&format!("[get_next_video_path] 创建目录: {}", full_output_path.to_string_lossy()));
-        fs::create_dir_all(&full_output_path).map_err(|e| crate::error::ProviderError::FileSystem(e))?;
+        crate::log_message(&format!(
+            "[get_next_video_path] 创建目录: {}",
+            full_output_path.to_string_lossy()
+        ));
+        fs::create_dir_all(&full_output_path)
+            .map_err(|e| crate::error::ProviderError::FileSystem(e))?;
     }
-    
+
     // 获取现有 mp4 文件数量
     let existing_count = fs::read_dir(&full_output_path)
         .map_err(|e| crate::error::ProviderError::FileSystem(e))?
@@ -206,13 +232,20 @@ pub fn get_next_video_path(output_dir: &str) -> crate::error::Result<String> {
             }
         })
         .count();
-    
+
     // 下一个序号 = 现有文件数 + 1
     let next_number = existing_count + 1;
-    
-    let result_path = format!("{}\\{}.mp4", full_output_path.to_string_lossy(), next_number);
-    crate::log_message(&format!("[get_next_video_path] 现有文件数: {}, 下一个序号: {}, 结果路径: {}", existing_count, next_number, result_path));
-    
+
+    let result_path = format!(
+        "{}\\{}.mp4",
+        full_output_path.to_string_lossy(),
+        next_number
+    );
+    crate::log_message(&format!(
+        "[get_next_video_path] 现有文件数: {}, 下一个序号: {}, 结果路径: {}",
+        existing_count, next_number, result_path
+    ));
+
     // 返回完整路径
     Ok(result_path)
 }

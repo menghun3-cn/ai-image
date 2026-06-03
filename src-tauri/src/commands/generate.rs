@@ -1,6 +1,6 @@
+use crate::config_store;
 use crate::providers::{create_provider, ImageProvider};
 use crate::types::{GenerationOptions, GenerationResult};
-use crate::config_store;
 
 #[tauri::command]
 pub async fn generate_image(options: GenerationOptions) -> Result<GenerationResult, String> {
@@ -38,7 +38,10 @@ pub async fn generate_image(options: GenerationOptions) -> Result<GenerationResu
                     retries: Some(attempt),
                 };
                 // 打印返回结果到日志
-                crate::log_message(&format!("[Generate Image] 返回结果: {}", serde_json::to_string(&final_result).unwrap_or_default()));
+                crate::log_message(&format!(
+                    "[Generate Image] 返回结果: {}",
+                    serde_json::to_string(&final_result).unwrap_or_default()
+                ));
                 return Ok(final_result);
             }
             Ok(result) => {
@@ -65,6 +68,9 @@ pub async fn generate_image(options: GenerationOptions) -> Result<GenerationResu
     }
 
     // 打印最终失败结果到日志
-    crate::log_message(&format!("[Generate Image] 返回结果: {}", serde_json::to_string(&last_result).unwrap_or_default()));
+    crate::log_message(&format!(
+        "[Generate Image] 返回结果: {}",
+        serde_json::to_string(&last_result).unwrap_or_default()
+    ));
     Ok(last_result)
 }

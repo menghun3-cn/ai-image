@@ -1,8 +1,8 @@
-use async_trait::async_trait;
 use crate::error::{ProviderError, Result};
 use crate::providers::ImageProvider;
 use crate::types::{GenerationOptions, GenerationResult};
 use crate::ProviderConfig;
+use async_trait::async_trait;
 use std::path::Path;
 use std::time::Duration;
 use tokio::time::sleep;
@@ -24,14 +24,12 @@ impl ImageProvider for ModelScopeProvider {
     }
 
     fn list_models(&self) -> Vec<String> {
-        vec![
-            "Qwen/Qwen-Image".to_string(),
-        ]
+        vec!["Qwen/Qwen-Image".to_string()]
     }
 
     async fn generate(&self, options: &GenerationOptions) -> Result<GenerationResult> {
         let model = options.model.as_deref().unwrap_or("Qwen/Qwen-Image");
-        
+
         crate::log_message(&format!("[ModelScope] 开始生成图片，模型: {}", model));
 
         // 检查 API Key
@@ -65,11 +63,16 @@ impl ImageProvider for ModelScopeProvider {
         });
 
         let client = reqwest::Client::new();
-        
-        crate::log_message(&format!("[ModelScope] 请求接口: POST https://api-inference.modelscope.cn/v1/images/generations"));
-        crate::log_message(&format!("[ModelScope] 请求体: {}", serde_json::to_string(&request_body).unwrap_or_default()));
+
+        crate::log_message(&format!(
+            "[ModelScope] 请求接口: POST https://api-inference.modelscope.cn/v1/images/generations"
+        ));
+        crate::log_message(&format!(
+            "[ModelScope] 请求体: {}",
+            serde_json::to_string(&request_body).unwrap_or_default()
+        ));
         crate::log_message(&format!("[ModelScope] API Key: {}", key_preview));
-        
+
         let response = client
             .post("https://api-inference.modelscope.cn/v1/images/generations")
             .header("Authorization", format!("Bearer {}", self.config.api_key))
@@ -86,20 +89,20 @@ impl ImageProvider for ModelScopeProvider {
         if !response.status().is_success() {
             let status = response.status();
             let text = response.text().await.unwrap_or_default();
-            crate::log_message(&format!("[ModelScope] 请求失败: status={}, body={}", status, text));
+            crate::log_message(&format!(
+                "[ModelScope] 请求失败: status={}, body={}",
+                status, text
+            ));
             return Err(ProviderError::Api {
                 status: status.as_u16(),
                 message: format!("请求失败: {}", text),
             });
         }
 
-        let result: serde_json::Value = response
-            .json()
-            .await
-            .map_err(|e| {
-                crate::log_message(&format!("[ModelScope] 解析响应失败: {}", e));
-                ProviderError::InvalidResponse(e.to_string())
-            })?;
+        let result: serde_json::Value = response.json().await.map_err(|e| {
+            crate::log_message(&format!("[ModelScope] 解析响应失败: {}", e));
+            ProviderError::InvalidResponse(e.to_string())
+        })?;
 
         // 检查响应中是否有错误信息
         if let Some(error_msg) = result.get("error").and_then(|e| e.as_str()) {
@@ -128,11 +131,17 @@ impl ImageProvider for ModelScopeProvider {
             .get("task_id")
             .and_then(|t| t.as_str())
             .ok_or_else(|| {
-                crate::log_message(&format!("[ModelScope] 无法获取 task_id，响应: {:?}", result));
+                crate::log_message(&format!(
+                    "[ModelScope] 无法获取 task_id，响应: {:?}",
+                    result
+                ));
                 ProviderError::InvalidResponse("无法获取 task_id".to_string())
             })?;
 
-        crate::log_message(&format!("[ModelScope] 异步任务创建成功，task_id: {}", task_id));
+        crate::log_message(&format!(
+            "[ModelScope] 异步任务创建成功，task_id: {}",
+            task_id
+        ));
 
         // 轮询获取结果 - 增加超时时间和调试日志
         let max_attempts = 120; // 增加到 120 次 (6分钟)
@@ -143,7 +152,11 @@ impl ImageProvider for ModelScopeProvider {
         for attempt in 0..max_attempts {
             sleep(poll_interval).await;
 
-            crate::log_message(&format!("[ModelScope] 第 {}/{} 次轮询...", attempt + 1, max_attempts));
+            crate::log_message(&format!(
+                "[ModelScope] 第 {}/{} 次轮询...",
+                attempt + 1,
+                max_attempts
+            ));
 
             let poll_response = client
                 .get(format!(
@@ -166,13 +179,19 @@ impl ImageProvider for ModelScopeProvider {
             if !poll_response.status().is_success() {
                 let status = poll_response.status();
                 let text = poll_response.text().await.unwrap_or_default();
-                crate::log_message(&format!("[ModelScope] 轮询响应异常: status={}, body={}", status, text));
+                crate::log_message(&format!(
+                    "[ModelScope] 轮询响应异常: status={}, body={}",
+                    status, text
+                ));
 
                 // 404 错误表示任务不存在或接口错误，不应继续轮询
                 if status.as_u16() == 404 {
                     return Err(ProviderError::Api {
                         status: 404,
-                        message: format!("轮询接口返回 404，任务可能不存在或接口地址错误: {}", text),
+                        message: format!(
+                            "轮询接口返回 404，任务可能不存在或接口地址错误: {}",
+                            text
+                        ),
                     });
                 }
 
@@ -213,7 +232,7 @@ impl ImageProvider for ModelScopeProvider {
             match status {
                 "SUCCEEDED" | "SUCCEED" => {
                     crate::log_message("[ModelScope] 任务完成，获取图片 URL...");
-                    
+
                     // 尝试多种路径获取图片 URL（与原项目一致）
                     let image_url = poll_result
                         .get("output_images")
@@ -229,13 +248,18 @@ impl ImageProvider for ModelScopeProvider {
                                 .and_then(|item| item.get("url"))
                                 .and_then(|u| u.as_str())
                         });
-                    
+
                     if let Some(url) = image_url {
                         crate::log_message(&format!("[ModelScope] 获取到图片 URL: {}", url));
                         return self.download_and_save(url, &options.output_dir).await;
                     } else {
-                        crate::log_message(&format!("[ModelScope] 任务完成但无法获取图片 URL，响应: {:?}", poll_result));
-                        return Err(ProviderError::InvalidResponse("任务完成但无法获取图片 URL".to_string()));
+                        crate::log_message(&format!(
+                            "[ModelScope] 任务完成但无法获取图片 URL，响应: {:?}",
+                            poll_result
+                        ));
+                        return Err(ProviderError::InvalidResponse(
+                            "任务完成但无法获取图片 URL".to_string(),
+                        ));
                     }
                 }
                 "FAILED" => {
@@ -265,13 +289,19 @@ impl ImageProvider for ModelScopeProvider {
                 _ => {
                     crate::log_message(&format!("[ModelScope] 未知任务状态: {}", status));
                     unknown_count += 1;
-                    
+
                     // 如果连续多次 UNKNOWN，可能是任务异常，停止轮询
                     if unknown_count >= max_unknown_count {
-                        crate::log_message(&format!("[ModelScope] 连续 {} 次获取到 UNKNOWN 状态，任务可能异常", max_unknown_count));
+                        crate::log_message(&format!(
+                            "[ModelScope] 连续 {} 次获取到 UNKNOWN 状态，任务可能异常",
+                            max_unknown_count
+                        ));
                         return Err(ProviderError::Api {
                             status: 500,
-                            message: format!("任务状态异常，连续 {} 次获取到 UNKNOWN 状态", max_unknown_count),
+                            message: format!(
+                                "任务状态异常，连续 {} 次获取到 UNKNOWN 状态",
+                                max_unknown_count
+                            ),
                         });
                     }
                     continue;
@@ -290,16 +320,12 @@ impl ImageProvider for ModelScopeProvider {
 impl ModelScopeProvider {
     async fn download_and_save(&self, url: &str, output_dir: &str) -> Result<GenerationResult> {
         crate::log_message(&format!("[ModelScope] 下载图片: {}", url));
-        
+
         let client = reqwest::Client::new();
-        let image_response = client
-            .get(url)
-            .send()
-            .await
-            .map_err(|e| {
-                crate::log_message(&format!("[ModelScope] 下载图片请求失败: {}", e));
-                ProviderError::Network(e)
-            })?;
+        let image_response = client.get(url).send().await.map_err(|e| {
+            crate::log_message(&format!("[ModelScope] 下载图片请求失败: {}", e));
+            ProviderError::Network(e)
+        })?;
 
         if !image_response.status().is_success() {
             let status = image_response.status();
@@ -310,22 +336,18 @@ impl ModelScopeProvider {
             });
         }
 
-        let image_bytes = image_response
-            .bytes()
-            .await
-            .map_err(|e| {
-                crate::log_message(&format!("[ModelScope] 读取图片数据失败: {}", e));
-                ProviderError::Network(e)
-            })?;
+        let image_bytes = image_response.bytes().await.map_err(|e| {
+            crate::log_message(&format!("[ModelScope] 读取图片数据失败: {}", e));
+            ProviderError::Network(e)
+        })?;
 
         // 使用统一的命名规则生成文件名
         let image_path = crate::get_next_image_path(output_dir)?;
 
-        std::fs::write(&image_path, &image_bytes)
-            .map_err(|e| {
-                crate::log_message(&format!("[ModelScope] 保存图片失败: {}", e));
-                ProviderError::FileSystem(e)
-            })?;
+        std::fs::write(&image_path, &image_bytes).map_err(|e| {
+            crate::log_message(&format!("[ModelScope] 保存图片失败: {}", e));
+            ProviderError::FileSystem(e)
+        })?;
 
         crate::log_message(&format!("[ModelScope] 图片保存成功: {}", image_path));
 

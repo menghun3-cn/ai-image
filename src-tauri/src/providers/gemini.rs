@@ -1,8 +1,8 @@
-use async_trait::async_trait;
 use crate::error::{ProviderError, Result};
 use crate::providers::ImageProvider;
 use crate::types::{GenerationOptions, GenerationResult};
 use crate::ProviderConfig;
+use async_trait::async_trait;
 use std::path::Path;
 
 pub struct GeminiProvider {
@@ -22,13 +22,14 @@ impl ImageProvider for GeminiProvider {
     }
 
     fn list_models(&self) -> Vec<String> {
-        vec![
-            "gemini-2.0-flash-exp-image-generation".to_string(),
-        ]
+        vec!["gemini-2.0-flash-exp-image-generation".to_string()]
     }
 
     async fn generate(&self, options: &GenerationOptions) -> Result<GenerationResult> {
-        let model = options.model.as_deref().unwrap_or("gemini-2.0-flash-exp-image-generation");
+        let model = options
+            .model
+            .as_deref()
+            .unwrap_or("gemini-2.0-flash-exp-image-generation");
 
         // 脱敏显示 API Key 前15位
         let key_preview = if self.config.api_key.len() > 15 {
@@ -53,9 +54,15 @@ impl ImageProvider for GeminiProvider {
             }
         });
 
-        let url = format!("https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent", model);
+        let url = format!(
+            "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent",
+            model
+        );
         crate::log_message(&format!("[Gemini] 请求接口: POST {}", url));
-        crate::log_message(&format!("[Gemini] 请求体: {}", serde_json::to_string(&request_body).unwrap_or_default()));
+        crate::log_message(&format!(
+            "[Gemini] 请求体: {}",
+            serde_json::to_string(&request_body).unwrap_or_default()
+        ));
         crate::log_message(&format!("[Gemini] API Key: {}", key_preview));
 
         let client = reqwest::Client::builder()
@@ -79,7 +86,11 @@ impl ImageProvider for GeminiProvider {
             let text = response.text().await.unwrap_or_default();
             return Err(ProviderError::Api {
                 status: status.as_u16(),
-                message: format!("Gemini API Error: {} - {}", status, &text[..text.len().min(200)]),
+                message: format!(
+                    "Gemini API Error: {} - {}",
+                    status,
+                    &text[..text.len().min(200)]
+                ),
             });
         }
 
@@ -105,13 +116,18 @@ impl ImageProvider for GeminiProvider {
                         let base64_data = inline_data
                             .get("data")
                             .and_then(|d| d.as_str())
-                            .ok_or_else(|| ProviderError::InvalidResponse("图片数据格式无效".to_string()))?;
+                            .ok_or_else(|| {
+                                ProviderError::InvalidResponse("图片数据格式无效".to_string())
+                            })?;
 
                         // 解码 base64 图片数据
                         let image_data = base64::Engine::decode(
                             &base64::engine::general_purpose::STANDARD,
-                            base64_data
-                        ).map_err(|e| ProviderError::InvalidResponse(format!("Base64 解码失败: {}", e)))?;
+                            base64_data,
+                        )
+                        .map_err(|e| {
+                            ProviderError::InvalidResponse(format!("Base64 解码失败: {}", e))
+                        })?;
 
                         // 确保输出目录存在
                         let output_path = Path::new(&options.output_dir);
@@ -140,6 +156,8 @@ impl ImageProvider for GeminiProvider {
             }
         }
 
-        Err(ProviderError::InvalidResponse("响应中未找到图片数据".to_string()))
+        Err(ProviderError::InvalidResponse(
+            "响应中未找到图片数据".to_string(),
+        ))
     }
 }

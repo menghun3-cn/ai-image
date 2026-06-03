@@ -1,8 +1,8 @@
-use async_trait::async_trait;
 use crate::error::{ProviderError, Result};
 use crate::providers::ImageProvider;
 use crate::types::{GenerationOptions, GenerationResult};
 use crate::ProviderConfig;
+use async_trait::async_trait;
 use std::path::Path;
 
 pub struct OpenAiProvider {
@@ -22,10 +22,7 @@ impl ImageProvider for OpenAiProvider {
     }
 
     fn list_models(&self) -> Vec<String> {
-        vec![
-            "gpt-image-1".to_string(),
-            "dall-e-3".to_string(),
-        ]
+        vec!["gpt-image-1".to_string(), "dall-e-3".to_string()]
     }
 
     async fn generate(&self, options: &GenerationOptions) -> Result<GenerationResult> {
@@ -52,8 +49,13 @@ impl ImageProvider for OpenAiProvider {
             "size": size,
         });
 
-        crate::log_message(&format!("[OpenAI] 请求接口: POST https://api.openai.com/v1/images/generations"));
-        crate::log_message(&format!("[OpenAI] 请求体: {}", serde_json::to_string(&request_body).unwrap_or_default()));
+        crate::log_message(&format!(
+            "[OpenAI] 请求接口: POST https://api.openai.com/v1/images/generations"
+        ));
+        crate::log_message(&format!(
+            "[OpenAI] 请求体: {}",
+            serde_json::to_string(&request_body).unwrap_or_default()
+        ));
         crate::log_message(&format!("[OpenAI] API Key: {}", key_preview));
 
         let client = reqwest::Client::builder()
@@ -75,7 +77,11 @@ impl ImageProvider for OpenAiProvider {
             let text = response.text().await.unwrap_or_default();
             return Err(ProviderError::Api {
                 status: status.as_u16(),
-                message: format!("OpenAI API Error: {} - {}", status, &text[..text.len().min(200)]),
+                message: format!(
+                    "OpenAI API Error: {} - {}",
+                    status,
+                    &text[..text.len().min(200)]
+                ),
             });
         }
 
@@ -101,18 +107,18 @@ impl ImageProvider for OpenAiProvider {
             .and_then(|d| d.as_array())
             .and_then(|arr| arr.first())
             .and_then(|item| item.get("b64_json"))
-            .and_then(|b| b.as_str()) {
+            .and_then(|b| b.as_str())
+        {
             // Base64 编码的图片数据
-            base64::Engine::decode(
-                &base64::engine::general_purpose::STANDARD,
-                b64_json
-            ).map_err(|e| ProviderError::InvalidResponse(format!("Base64 解码失败: {}", e)))?
+            base64::Engine::decode(&base64::engine::general_purpose::STANDARD, b64_json)
+                .map_err(|e| ProviderError::InvalidResponse(format!("Base64 解码失败: {}", e)))?
         } else if let Some(url) = result
             .get("data")
             .and_then(|d| d.as_array())
             .and_then(|arr| arr.first())
             .and_then(|item| item.get("url"))
-            .and_then(|u| u.as_str()) {
+            .and_then(|u| u.as_str())
+        {
             // URL 格式的图片，需要下载
             let image_response = client
                 .get(url)
@@ -133,7 +139,9 @@ impl ImageProvider for OpenAiProvider {
                 .map_err(|e| ProviderError::Network(e))?
                 .to_vec()
         } else {
-            return Err(ProviderError::InvalidResponse("响应中未找到图片数据".to_string()));
+            return Err(ProviderError::InvalidResponse(
+                "响应中未找到图片数据".to_string(),
+            ));
         };
 
         // 保存图片

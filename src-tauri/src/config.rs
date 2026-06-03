@@ -5,14 +5,17 @@ use std::fs;
 pub fn load_config() -> anyhow::Result<AppConfig> {
     let project_root = crate::get_project_root();
     let env_path = project_root.join(".env");
-    
+
     crate::log_message(&format!("[Config] 项目根目录: {}", project_root.display()));
     crate::log_message(&format!("[Config] 尝试读取 .env: {}", env_path.display()));
 
     // 如果 .env 不存在，尝试从 .env.example 创建
     if !env_path.exists() {
         let example_path = project_root.join(".env.example");
-        crate::log_message(&format!("[Config] .env 不存在，检查 .env.example: {}", example_path.display()));
+        crate::log_message(&format!(
+            "[Config] .env 不存在，检查 .env.example: {}",
+            example_path.display()
+        ));
         if example_path.exists() {
             crate::log_message("[Config] 从 .env.example 创建 .env");
             if let Ok(content) = fs::read_to_string(&example_path) {
@@ -33,7 +36,9 @@ pub fn load_config() -> anyhow::Result<AppConfig> {
     let vars = parse_env(&env_content);
 
     let get_var = |key: &str, default: &str| -> String {
-        vars.get(key).cloned().unwrap_or_else(|| default.to_string())
+        vars.get(key)
+            .cloned()
+            .unwrap_or_else(|| default.to_string())
     };
 
     // 设置代理环境变量
@@ -48,10 +53,7 @@ pub fn load_config() -> anyhow::Result<AppConfig> {
         providers: ProvidersConfig {
             modelscope: ProviderConfig {
                 api_key: get_var("MODELSCOPE_API_KEY", ""),
-                endpoint: get_var(
-                    "MODELSCOPE_ENDPOINT",
-                    "https://api.modelscope.cn/v1/models",
-                ),
+                endpoint: get_var("MODELSCOPE_ENDPOINT", "https://api.modelscope.cn/v1/models"),
             },
             nvidia: ProviderConfig {
                 api_key: get_var("NVIDIA_API_KEY", ""),
@@ -87,10 +89,7 @@ pub fn load_config() -> anyhow::Result<AppConfig> {
             },
             agnes: ProviderConfig {
                 api_key: get_var("AGNES_API_KEY", ""),
-                endpoint: get_var(
-                    "AGNES_ENDPOINT",
-                    "https://apihub.agnes-ai.com/v1",
-                ),
+                endpoint: get_var("AGNES_ENDPOINT", "https://apihub.agnes-ai.com/v1"),
             },
         },
         default_provider: get_var("DEFAULT_PROVIDER", "agnes"),
@@ -120,9 +119,7 @@ pub fn load_config() -> anyhow::Result<AppConfig> {
                 "Kwai-Kolors/Kolors".to_string(),
                 "stabilityai/stable-diffusion-3-5-large".to_string(),
             ],
-            agnes: vec![
-                "agnes-image-2.1-flash".to_string(),
-            ],
+            agnes: vec!["agnes-image-2.1-flash".to_string()],
         },
     })
 }

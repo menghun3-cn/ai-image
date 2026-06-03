@@ -1,8 +1,8 @@
-use async_trait::async_trait;
 use crate::error::{ProviderError, Result};
 use crate::providers::ImageProvider;
 use crate::types::{GenerationOptions, GenerationResult};
 use crate::ProviderConfig;
+use async_trait::async_trait;
 use std::path::Path;
 
 pub struct SiliconFlowProvider {
@@ -22,9 +22,7 @@ impl ImageProvider for SiliconFlowProvider {
     }
 
     fn list_models(&self) -> Vec<String> {
-        vec![
-            "Kwai-Kolors/Kolors".to_string(),
-        ]
+        vec!["Kwai-Kolors/Kolors".to_string()]
     }
 
     async fn generate(&self, options: &GenerationOptions) -> Result<GenerationResult> {
@@ -57,8 +55,13 @@ impl ImageProvider for SiliconFlowProvider {
             request_body["guidance_scale"] = serde_json::json!(guidance_scale);
         }
 
-        crate::log_message(&format!("[SiliconFlow] 请求接口: POST https://api.siliconflow.cn/v1/images/generations"));
-        crate::log_message(&format!("[SiliconFlow] 请求体: {}", serde_json::to_string(&request_body).unwrap_or_default()));
+        crate::log_message(&format!(
+            "[SiliconFlow] 请求接口: POST https://api.siliconflow.cn/v1/images/generations"
+        ));
+        crate::log_message(&format!(
+            "[SiliconFlow] 请求体: {}",
+            serde_json::to_string(&request_body).unwrap_or_default()
+        ));
         crate::log_message(&format!("[SiliconFlow] API Key: {}", key_preview));
 
         let client = reqwest::Client::builder()
@@ -80,7 +83,11 @@ impl ImageProvider for SiliconFlowProvider {
             let text = response.text().await.unwrap_or_default();
             return Err(ProviderError::Api {
                 status: status.as_u16(),
-                message: format!("SiliconFlow API Error: {} - {}", status, &text[..text.len().min(200)]),
+                message: format!(
+                    "SiliconFlow API Error: {} - {}",
+                    status,
+                    &text[..text.len().min(200)]
+                ),
             });
         }
 
@@ -106,28 +113,30 @@ impl ImageProvider for SiliconFlowProvider {
             .and_then(|i| i.as_array())
             .and_then(|arr| arr.first())
             .and_then(|item| item.get("url"))
-            .and_then(|u| u.as_str()) {
+            .and_then(|u| u.as_str())
+        {
             Some(url.to_string())
         } else if let Some(url) = result
             .get("data")
             .and_then(|d| d.as_array())
             .and_then(|arr| arr.first())
             .and_then(|item| item.get("url"))
-            .and_then(|u| u.as_str()) {
+            .and_then(|u| u.as_str())
+        {
             Some(url.to_string())
         } else if let Some(url) = result
             .get("images")
             .and_then(|i| i.as_array())
             .and_then(|arr| arr.first())
-            .and_then(|item| item.as_str()) {
+            .and_then(|item| item.as_str())
+        {
             Some(url.to_string())
         } else {
             None
         };
 
-        let image_url = image_url.ok_or_else(|| {
-            ProviderError::InvalidResponse("响应中未找到图片 URL".to_string())
-        })?;
+        let image_url = image_url
+            .ok_or_else(|| ProviderError::InvalidResponse("响应中未找到图片 URL".to_string()))?;
 
         // 下载图片
         let image_response = client

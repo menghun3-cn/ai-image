@@ -1,5 +1,5 @@
-use crate::AppConfig;
 use crate::config_store;
+use crate::AppConfig;
 
 #[tauri::command]
 pub fn load_config() -> Result<AppConfig, String> {
@@ -14,9 +14,7 @@ pub fn save_config(config: AppConfig) -> Result<(), String> {
 #[tauri::command]
 pub fn get_provider_models(provider: String) -> Result<Vec<String>, String> {
     let models = match provider.as_str() {
-        "modelscope" => vec![
-            "Qwen/Qwen-Image".to_string(),
-        ],
+        "modelscope" => vec!["Qwen/Qwen-Image".to_string()],
         "nvidia" => vec![
             "black-forest-labs/flux.2-klein-4b".to_string(),
             "black-forest-labs/flux.1-kontext-dev".to_string(),
@@ -29,9 +27,7 @@ pub fn get_provider_models(provider: String) -> Result<Vec<String>, String> {
             "openai/gpt-image-1".to_string(),
         ],
         "openai" => vec!["gpt-image-1".to_string(), "dall-e-3".to_string()],
-        "siliconflow" => vec![
-            "Kwai-Kolors/Kolors".to_string(),
-        ],
+        "siliconflow" => vec!["Kwai-Kolors/Kolors".to_string()],
         _ => vec![],
     };
     Ok(models)

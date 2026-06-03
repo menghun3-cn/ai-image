@@ -1,8 +1,8 @@
-use async_trait::async_trait;
 use crate::error::{ProviderError, Result};
 use crate::providers::ImageProvider;
 use crate::types::{GenerationOptions, GenerationResult};
 use crate::ProviderConfig;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -30,7 +30,10 @@ impl ImageProvider for OpenRouterProvider {
     }
 
     async fn generate(&self, options: &GenerationOptions) -> Result<GenerationResult> {
-        let model = options.model.as_deref().unwrap_or("bytedance-seed/seedream-4.5");
+        let model = options
+            .model
+            .as_deref()
+            .unwrap_or("bytedance-seed/seedream-4.5");
 
         // 脱敏显示 API Key 前15位
         let key_preview = if self.config.api_key.len() > 15 {
@@ -71,14 +74,20 @@ impl ImageProvider for OpenRouterProvider {
             let divisor = gcd(options.width as u32, options.height as u32);
             let ratio_w = options.width as u32 / divisor;
             let ratio_h = options.height as u32 / divisor;
-            
+
             request_body["image_config"] = serde_json::json!({
                 "aspect_ratio": format!("{}:{}", ratio_w, ratio_h)
             });
         }
 
-        crate::log_message(&format!("[OpenRouter] 请求接口: POST {}", self.config.endpoint));
-        crate::log_message(&format!("[OpenRouter] 请求体: {}", serde_json::to_string(&request_body).unwrap_or_default()));
+        crate::log_message(&format!(
+            "[OpenRouter] 请求接口: POST {}",
+            self.config.endpoint
+        ));
+        crate::log_message(&format!(
+            "[OpenRouter] 请求体: {}",
+            serde_json::to_string(&request_body).unwrap_or_default()
+        ));
         crate::log_message(&format!("[OpenRouter] API Key: {}", key_preview));
 
         let client = reqwest::Client::new();
@@ -117,7 +126,10 @@ impl ImageProvider for OpenRouterProvider {
         let mut image_bytes: Option<Vec<u8>> = None;
 
         // 尝试从 message.images 获取图片
-        if let Some(images) = message.and_then(|msg| msg.get("images")).and_then(|v| v.as_array()) {
+        if let Some(images) = message
+            .and_then(|msg| msg.get("images"))
+            .and_then(|v| v.as_array())
+        {
             for image in images {
                 if let Some(image_url) = image
                     .get("image_url")
@@ -130,7 +142,8 @@ impl ImageProvider for OpenRouterProvider {
                             image_bytes = base64::Engine::decode(
                                 &base64::engine::general_purpose::STANDARD,
                                 base64_data,
-                            ).ok();
+                            )
+                            .ok();
                         }
                     } else {
                         // URL 格式的图片
@@ -183,20 +196,20 @@ impl ImageProvider for OpenRouterProvider {
             }
         }
 
-        let image_bytes = image_bytes.ok_or_else(|| {
-            ProviderError::InvalidResponse("无法获取图片数据".to_string())
-        })?;
+        let image_bytes = image_bytes
+            .ok_or_else(|| ProviderError::InvalidResponse("无法获取图片数据".to_string()))?;
 
         // 保存图片
         let output_dir = &options.output_dir;
-        std::fs::create_dir_all(output_dir)
-            .map_err(ProviderError::FileSystem)?;
+        std::fs::create_dir_all(output_dir).map_err(ProviderError::FileSystem)?;
 
-        let filename = format!("{}.png", uuid::Uuid::new_v4().to_string().split('-').next().unwrap());
+        let filename = format!(
+            "{}.png",
+            uuid::Uuid::new_v4().to_string().split('-').next().unwrap()
+        );
         let image_path = Path::new(output_dir).join(&filename);
 
-        std::fs::write(&image_path, &image_bytes)
-            .map_err(ProviderError::FileSystem)?;
+        std::fs::write(&image_path, &image_bytes).map_err(ProviderError::FileSystem)?;
 
         Ok(GenerationResult {
             success: true,

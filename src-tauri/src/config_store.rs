@@ -9,8 +9,7 @@ const CONFIG_DIR_NAME: &str = ".ai-image";
 /// Windows: %USERPROFILE%/.ai-image
 /// Linux/macOS: ~/.ai-image
 pub fn get_config_dir() -> anyhow::Result<PathBuf> {
-    let home_dir = dirs::home_dir()
-        .ok_or_else(|| anyhow::anyhow!("无法获取用户主目录"))?;
+    let home_dir = dirs::home_dir().ok_or_else(|| anyhow::anyhow!("无法获取用户主目录"))?;
     let config_dir = home_dir.join(CONFIG_DIR_NAME);
     std::fs::create_dir_all(&config_dir)?;
     Ok(config_dir)
@@ -26,7 +25,7 @@ pub fn get_config_path() -> anyhow::Result<PathBuf> {
 pub fn init_config_store() -> anyhow::Result<()> {
     let config_dir = get_config_dir()?;
     crate::log_message(&format!("[ConfigStore] 配置目录: {}", config_dir.display()));
-    
+
     let config_path = get_config_path()?;
     if !config_path.exists() {
         crate::log_message("[ConfigStore] 配置文件不存在，创建默认配置");
@@ -35,7 +34,7 @@ pub fn init_config_store() -> anyhow::Result<()> {
         std::fs::write(&config_path, content)?;
         setup_proxy(&config);
     }
-    
+
     Ok(())
 }
 
@@ -43,9 +42,12 @@ pub fn init_config_store() -> anyhow::Result<()> {
 /// 如果配置项缺失，自动补充默认值
 pub fn load_config_from_store() -> anyhow::Result<AppConfig> {
     let config_path = get_config_path()?;
-    
-    crate::log_message(&format!("[ConfigStore] 尝试读取配置: {}", config_path.display()));
-    
+
+    crate::log_message(&format!(
+        "[ConfigStore] 尝试读取配置: {}",
+        config_path.display()
+    ));
+
     if !config_path.exists() {
         crate::log_message("[ConfigStore] 配置文件不存在，使用默认配置");
         let config = default_config();
@@ -55,14 +57,14 @@ pub fn load_config_from_store() -> anyhow::Result<AppConfig> {
         setup_proxy(&config);
         return Ok(config);
     }
-    
+
     let content = std::fs::read_to_string(&config_path)?;
     let mut config: AppConfig = serde_json::from_str(&content)?;
-    
+
     // 补充缺失的配置项
     let default = default_config();
     let mut needs_save = false;
-    
+
     // 补充 providers 中的缺失项
     if config.providers.modelscope.endpoint.is_empty() {
         config.providers.modelscope.endpoint = default.providers.modelscope.endpoint;
@@ -92,7 +94,7 @@ pub fn load_config_from_store() -> anyhow::Result<AppConfig> {
         config.providers.agnes.endpoint = default.providers.agnes.endpoint;
         needs_save = true;
     }
-    
+
     // 补充其他缺失项
     if config.default_provider.is_empty() {
         config.default_provider = default.default_provider;
@@ -110,7 +112,7 @@ pub fn load_config_from_store() -> anyhow::Result<AppConfig> {
         config.theme = default.theme;
         needs_save = true;
     }
-    
+
     // 补充 models 中的缺失项
     if config.models.modelscope.is_empty() {
         config.models.modelscope = default.models.modelscope;
@@ -140,34 +142,37 @@ pub fn load_config_from_store() -> anyhow::Result<AppConfig> {
         config.models.agnes = default.models.agnes;
         needs_save = true;
     }
-    
+
     // 如果补充了缺失项，保存更新后的配置
     if needs_save {
         crate::log_message("[ConfigStore] 配置项有缺失，已补充默认值");
         let content = serde_json::to_string_pretty(&config)?;
         std::fs::write(&config_path, content)?;
     }
-    
+
     crate::log_message("[ConfigStore] 配置加载成功");
-    
+
     // 设置代理环境变量
     setup_proxy(&config);
-    
+
     Ok(config)
 }
 
 /// 保存配置到 Tauri 应用存储
 pub fn save_config_to_store(config: &AppConfig) -> anyhow::Result<()> {
     let config_path = get_config_path()?;
-    
-    crate::log_message(&format!("[ConfigStore] 保存配置到: {}", config_path.display()));
-    
+
+    crate::log_message(&format!(
+        "[ConfigStore] 保存配置到: {}",
+        config_path.display()
+    ));
+
     let content = serde_json::to_string_pretty(config)?;
     std::fs::write(&config_path, content)?;
-    
+
     // 设置代理环境变量
     setup_proxy(config);
-    
+
     crate::log_message("[ConfigStore] 配置保存成功");
     Ok(())
 }
@@ -236,12 +241,8 @@ fn default_config() -> AppConfig {
 /// 默认模型列表
 fn default_models() -> ModelLists {
     ModelLists {
-        modelscope: vec![
-            "Qwen/Qwen-Image".to_string(),
-        ],
-        nvidia: vec![
-            "black-forest-labs/flux.2-klein-4b".to_string(),
-        ],
+        modelscope: vec!["Qwen/Qwen-Image".to_string()],
+        nvidia: vec!["black-forest-labs/flux.2-klein-4b".to_string()],
         gemini: vec!["gemini-2.0-flash-exp-image-generation".to_string()],
         openrouter: vec![
             "bytedance-seed/seedream-4.5".to_string(),
@@ -249,11 +250,7 @@ fn default_models() -> ModelLists {
             "openrouter/auto".to_string(),
         ],
         openai: vec!["gpt-image-2".to_string()],
-        siliconflow: vec![
-            "Kwai-Kolors/Kolors".to_string(),
-        ],
-        agnes: vec![
-            "agnes-image-2.1-flash".to_string(),
-        ],
+        siliconflow: vec!["Kwai-Kolors/Kolors".to_string()],
+        agnes: vec!["agnes-image-2.1-flash".to_string()],
     }
 }

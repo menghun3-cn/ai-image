@@ -1,7 +1,7 @@
-use async_trait::async_trait;
 use crate::error::Result;
 use crate::types::GenerationOptions;
 use crate::ProviderConfig;
+use async_trait::async_trait;
 
 pub mod agnes;
 pub mod gemini;
@@ -15,13 +15,11 @@ pub mod siliconflow;
 pub trait ImageProvider: Send + Sync {
     fn name(&self) -> &'static str;
     fn list_models(&self) -> Vec<String>;
-    async fn generate(&self, options: &GenerationOptions) -> Result<crate::types::GenerationResult>;
+    async fn generate(&self, options: &GenerationOptions)
+        -> Result<crate::types::GenerationResult>;
 }
 
-pub fn create_provider(
-    name: &str,
-    config: ProviderConfig,
-) -> Option<Box<dyn ImageProvider>> {
+pub fn create_provider(name: &str, config: ProviderConfig) -> Option<Box<dyn ImageProvider>> {
     match name {
         "agnes" => Some(Box::new(agnes::AgnesProvider::new(config))),
         "modelscope" => Some(Box::new(modelscope::ModelScopeProvider::new(config))),

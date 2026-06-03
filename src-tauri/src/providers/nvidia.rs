@@ -1,8 +1,8 @@
-use async_trait::async_trait;
 use crate::error::{ProviderError, Result};
 use crate::providers::ImageProvider;
 use crate::types::{GenerationOptions, GenerationResult};
 use crate::ProviderConfig;
+use async_trait::async_trait;
 use std::path::Path;
 
 pub struct NvidiaProvider {
@@ -15,7 +15,11 @@ impl NvidiaProvider {
     }
 
     fn gcd(a: u32, b: u32) -> u32 {
-        if b == 0 { a } else { Self::gcd(b, a % b) }
+        if b == 0 {
+            a
+        } else {
+            Self::gcd(b, a % b)
+        }
     }
 }
 
@@ -35,7 +39,10 @@ impl ImageProvider for NvidiaProvider {
     }
 
     async fn generate(&self, options: &GenerationOptions) -> Result<GenerationResult> {
-        let model = options.model.as_deref().unwrap_or("black-forest-labs/flux.2-klein-4b");
+        let model = options
+            .model
+            .as_deref()
+            .unwrap_or("black-forest-labs/flux.2-klein-4b");
 
         // 脱敏显示 API Key 前15位
         let key_preview = if self.config.api_key.len() > 15 {
@@ -53,12 +60,20 @@ impl ImageProvider for NvidiaProvider {
         let is_dev = model.contains("flux.1-dev");
         let is_schnell = model.contains("schnell");
         let is_kontext = model.contains("kontext");
-        
+
         let request_body = if is_klein || is_dev || is_schnell {
             // flux.2-klein-4b / flux.1-dev / flux.1-schnell: 使用 width/height
-            let width = if options.width > 0 { options.width } else { 1024 };
-            let height = if options.height > 0 { options.height } else { 1024 };
-            
+            let width = if options.width > 0 {
+                options.width
+            } else {
+                1024
+            };
+            let height = if options.height > 0 {
+                options.height
+            } else {
+                1024
+            };
+
             if is_schnell {
                 // flux.1-schnell: 无 cfg_scale, steps=4
                 let steps = options.steps.map(|v| v.clamp(1, 50)).unwrap_or(4);
@@ -71,7 +86,10 @@ impl ImageProvider for NvidiaProvider {
                 })
             } else if is_dev {
                 // flux.1-dev: 有 cfg_scale, steps>=5
-                let cfg_scale = options.guidance_scale.map(|v| v.clamp(1.0, 10.0)).unwrap_or(3.5);
+                let cfg_scale = options
+                    .guidance_scale
+                    .map(|v| v.clamp(1.0, 10.0))
+                    .unwrap_or(3.5);
                 let steps = options.steps.map(|v| v.clamp(5, 50)).unwrap_or(20);
                 serde_json::json!({
                     "prompt": &options.prompt,
@@ -83,7 +101,10 @@ impl ImageProvider for NvidiaProvider {
                 })
             } else {
                 // flux.2-klein-4b: cfg_scale <= 1, steps=4
-                let cfg_scale = options.guidance_scale.map(|v| v.clamp(0.0, 1.0)).unwrap_or(1.0);
+                let cfg_scale = options
+                    .guidance_scale
+                    .map(|v| v.clamp(0.0, 1.0))
+                    .unwrap_or(1.0);
                 let steps = options.steps.map(|v| v.clamp(1, 50)).unwrap_or(4);
                 serde_json::json!({
                     "prompt": &options.prompt,
@@ -98,12 +119,20 @@ impl ImageProvider for NvidiaProvider {
             // flux.1-kontext-dev: 图生图，需要 image 参数
             // 暂时不支持，返回错误
             return Err(ProviderError::InvalidResponse(
-                "flux.1-kontext-dev 模型需要输入图片，当前仅支持文生图".to_string()
+                "flux.1-kontext-dev 模型需要输入图片，当前仅支持文生图".to_string(),
             ));
         } else {
             // 默认使用 width/height 格式
-            let width = if options.width > 0 { options.width } else { 1024 };
-            let height = if options.height > 0 { options.height } else { 1024 };
+            let width = if options.width > 0 {
+                options.width
+            } else {
+                1024
+            };
+            let height = if options.height > 0 {
+                options.height
+            } else {
+                1024
+            };
             let steps = options.steps.map(|v| v.clamp(1, 50)).unwrap_or(4);
             serde_json::json!({
                 "prompt": &options.prompt,
@@ -116,7 +145,10 @@ impl ImageProvider for NvidiaProvider {
 
         let url = format!("https://ai.api.nvidia.com/v1/genai/{}", model);
         crate::log_message(&format!("[NVIDIA] 请求接口: POST {}", url));
-        crate::log_message(&format!("[NVIDIA] 请求体: {}", serde_json::to_string(&request_body).unwrap_or_default()));
+        crate::log_message(&format!(
+            "[NVIDIA] 请求体: {}",
+            serde_json::to_string(&request_body).unwrap_or_default()
+        ));
         crate::log_message(&format!("[NVIDIA] API Key: {}", key_preview));
 
         let client = reqwest::Client::new();
@@ -135,7 +167,11 @@ impl ImageProvider for NvidiaProvider {
             let text = response.text().await.unwrap_or_default();
             return Err(ProviderError::Api {
                 status: status.as_u16(),
-                message: format!("NVIDIA API Error: {} - {}", status, &text[..text.len().min(200)]),
+                message: format!(
+                    "NVIDIA API Error: {} - {}",
+                    status,
+                    &text[..text.len().min(200)]
+                ),
             });
         }
 
@@ -144,7 +180,10 @@ impl ImageProvider for NvidiaProvider {
             .await
             .map_err(|e| ProviderError::InvalidResponse(e.to_string()))?;
 
-        crate::log_message(&format!("[NVIDIA] 响应内容: {}", serde_json::to_string(&result).unwrap_or_default()));
+        crate::log_message(&format!(
+            "[NVIDIA] 响应内容: {}",
+            serde_json::to_string(&result).unwrap_or_default()
+        ));
 
         // 获取 base64 图片数据 - NVIDIA 响应格式: {"artifacts": [{"base64": "...", "finishReason": "SUCCESS", "seed": 123}]}
         let base64_data = result
@@ -153,13 +192,17 @@ impl ImageProvider for NvidiaProvider {
             .and_then(|arr| arr.first())
             .and_then(|artifact| artifact.get("base64"))
             .and_then(|b| b.as_str())
-            .ok_or_else(|| ProviderError::InvalidResponse(format!("响应中不包含图片数据，实际响应: {:?}", result)))?;
+            .ok_or_else(|| {
+                ProviderError::InvalidResponse(format!(
+                    "响应中不包含图片数据，实际响应: {:?}",
+                    result
+                ))
+            })?;
 
         // 解码并保存图片
-        let image_data = base64::Engine::decode(
-            &base64::engine::general_purpose::STANDARD,
-            base64_data
-        ).map_err(|e| ProviderError::InvalidResponse(format!("Base64 解码失败: {}", e)))?;
+        let image_data =
+            base64::Engine::decode(&base64::engine::general_purpose::STANDARD, base64_data)
+                .map_err(|e| ProviderError::InvalidResponse(format!("Base64 解码失败: {}", e)))?;
 
         // 确保输出目录存在
         let output_path = Path::new(&options.output_dir);

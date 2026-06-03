@@ -2,13 +2,13 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use ai_image_v2_lib::commands;
-use ai_image_v2_lib::{setup_logging, log_message, config_store};
+use ai_image_v2_lib::{config_store, log_message, setup_logging};
 
 fn main() {
     setup_logging();
-    
+
     log_message("应用程序启动");
-    
+
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_fs::init())

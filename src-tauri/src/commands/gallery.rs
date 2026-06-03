@@ -10,12 +10,18 @@ pub fn get_images(output_dir: String) -> Result<Vec<ImageInfo>, String> {
     } else {
         path.to_path_buf()
     };
-    
+
     // 记录日志便于调试
-    crate::log_message(&format!("[Gallery] 查找图片目录: {}", full_path.to_string_lossy()));
-    
+    crate::log_message(&format!(
+        "[Gallery] 查找图片目录: {}",
+        full_path.to_string_lossy()
+    ));
+
     if !full_path.exists() {
-        crate::log_message(&format!("[Gallery] 目录不存在: {}", full_path.to_string_lossy()));
+        crate::log_message(&format!(
+            "[Gallery] 目录不存在: {}",
+            full_path.to_string_lossy()
+        ));
         return Ok(vec![]);
     }
 
@@ -36,7 +42,11 @@ pub fn get_images(output_dir: String) -> Result<Vec<ImageInfo>, String> {
 
                             images.push(ImageInfo {
                                 path: path.to_string_lossy().to_string(),
-                                name: path.file_name().unwrap_or_default().to_string_lossy().to_string(),
+                                name: path
+                                    .file_name()
+                                    .unwrap_or_default()
+                                    .to_string_lossy()
+                                    .to_string(),
                                 time,
                             });
                         }
@@ -70,7 +80,10 @@ pub fn open_output_dir(path: String) -> Result<(), String> {
     };
 
     let full_path_str = full_path.to_string_lossy().to_string();
-    crate::log_message(&format!("[open_output_dir] 打开目录: 原始路径={}, 完整路径={}", path, full_path_str));
+    crate::log_message(&format!(
+        "[open_output_dir] 打开目录: 原始路径={}, 完整路径={}",
+        path, full_path_str
+    ));
 
     #[cfg(target_os = "windows")]
     {
