@@ -1,10 +1,52 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from "vue";
 import { getImages, deleteImage, openOutputDir, loadConfig } from "@/lib/tauri";
-import { message, confirm } from "@tauri-apps/plugin-dialog";
+import Dialog from "@/components/Dialog.vue";
 import { TrashIcon, FolderOpenIcon, RefreshCwIcon, ImageIcon, ChevronLeftIcon, ChevronRightIcon, XIcon } from "lucide-vue-next";
 import { formatTime } from "@/lib/utils";
 import { readFile } from "@tauri-apps/plugin-fs";
+
+// 对话框状态
+const dialog = ref({
+  show: false,
+  title: "",
+  message: "",
+  type: "info" as "info" | "warning" | "error" | "success",
+  showCancel: false,
+});
+
+// 对话框确认回调
+let dialogResolve: ((value: boolean) => void) | null = null;
+
+function showDialog(options: {
+  title: string;
+  message: string;
+  type?: "info" | "warning" | "error" | "success";
+  showCancel?: boolean;
+}): Promise<boolean> {
+  dialog.value = {
+    show: true,
+    title: options.title,
+    message: options.message,
+    type: options.type || "info",
+    showCancel: options.showCancel || false,
+  };
+  return new Promise((resolve) => {
+    dialogResolve = resolve;
+  });
+}
+
+function handleDialogConfirm() {
+  dialog.value.show = false;
+  dialogResolve?.(true);
+  dialogResolve = null;
+}
+
+function handleDialogCancel() {
+  dialog.value.show = false;
+  dialogResolve?.(false);
+  dialogResolve = null;
+}
 
 interface ImageItem {
   path: string;
@@ -110,7 +152,12 @@ async function loadImages() {
 }
 
 async function handleDelete(path: string) {
-  const confirmed = await confirm("确定要删除这张图片吗？", { title: "确认删除", kind: "warning" });
+  const confirmed = await showDialog({
+    title: "确认删除",
+    message: "确定要删除这张图片吗？",
+    type: "warning",
+    showCancel: true,
+  });
   if (!confirmed) return;
 
   try {
@@ -121,7 +168,11 @@ async function handleDelete(path: string) {
     }
     await loadImages();
   } catch (e) {
-    await message("删除失败: " + String(e), { title: "错误", kind: "error" });
+    await showDialog({
+      title: "错误",
+      message: "删除失败: " + String(e),
+      type: "error",
+    });
   }
 }
 
@@ -295,5 +346,16 @@ function removeKeyListener() {
         </button>
       </div>
     </div>
+
+    <!-- 对话框组件 -->
+    <Dialog
+      :show="dialog.show"
+      :title="dialog.title"
+      :message="dialog.message"
+      :type="dialog.type"
+      :show-cancel="dialog.showCancel"
+      @confirm="handleDialogConfirm"
+      @cancel="handleDialogCancel"
+    />
   </div>
 </template>

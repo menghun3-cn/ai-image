@@ -2,7 +2,7 @@
 import { ref, onMounted, watch, nextTick } from "vue";
 import { loadConfig, saveConfig } from "@/lib/tauri";
 import type { AppConfig } from "@/lib/tauri";
-import { message, confirm } from "@tauri-apps/plugin-dialog";
+import Dialog from "@/components/Dialog.vue";
 import { InfoIcon, SlidersIcon, KeyIcon, GlobeIcon, FolderIcon, EyeIcon, EyeOffIcon, ExternalLinkIcon } from "lucide-vue-next";
 
 // 各平台获取 API Key 的链接
@@ -19,6 +19,48 @@ const providerLinks: Record<string, string> = {
 const config = ref<AppConfig | null>(null);
 const activeTab = ref(localStorage.getItem("lastSettingsTab") || "api");
 const saveError = ref<string | null>(null);
+
+// 对话框状态
+const dialog = ref({
+  show: false,
+  title: "",
+  message: "",
+  type: "info" as "info" | "warning" | "error" | "success",
+  showCancel: false,
+});
+
+// 对话框确认回调
+let dialogResolve: ((value: boolean) => void) | null = null;
+
+function showDialog(options: {
+  title: string;
+  message: string;
+  type?: "info" | "warning" | "error" | "success";
+  showCancel?: boolean;
+}): Promise<boolean> {
+  dialog.value = {
+    show: true,
+    title: options.title,
+    message: options.message,
+    type: options.type || "info",
+    showCancel: options.showCancel || false,
+  };
+  return new Promise((resolve) => {
+    dialogResolve = resolve;
+  });
+}
+
+function handleDialogConfirm() {
+  dialog.value.show = false;
+  dialogResolve?.(true);
+  dialogResolve = null;
+}
+
+function handleDialogCancel() {
+  dialog.value.show = false;
+  dialogResolve?.(false);
+  dialogResolve = null;
+}
 
 // 监听标签变化，持久化到 localStorage
 watch(activeTab, (newTab) => {
@@ -74,13 +116,22 @@ onMounted(async () => {
     isLoading = false;
   } catch (e) {
     console.error("Failed to load config:", e);
-    await message("加载配置失败: " + String(e), { title: "错误", kind: "error" });
+    await showDialog({
+      title: "错误",
+      message: "加载配置失败: " + String(e),
+      type: "error",
+    });
   }
 });
 
 async function resetToDefaults() {
   if (!config.value) return;
-  const confirmed = await confirm("确定要重置所有设置为默认值吗？", { title: "确认", kind: "warning" });
+  const confirmed = await showDialog({
+    title: "确认",
+    message: "确定要重置所有设置为默认值吗？",
+    type: "warning",
+    showCancel: true,
+  });
   if (confirmed) {
     config.value.default_steps = 30;
     config.value.default_guidance_scale = 7.5;
@@ -650,4 +701,15 @@ const tabs = [
       </div>
     </main>
   </div>
+
+  <!-- 对话框组件 -->
+  <Dialog
+    :show="dialog.show"
+    :title="dialog.title"
+    :message="dialog.message"
+    :type="dialog.type"
+    :show-cancel="dialog.showCancel"
+    @confirm="handleDialogConfirm"
+    @cancel="handleDialogCancel"
+  />
 </template>
