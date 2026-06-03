@@ -50,6 +50,13 @@ pub struct VideoGenerationOptions {
     pub frame_rate: Option<f32>,
     pub seed: Option<u64>,
     pub negative_prompt: Option<String>,
+    // 图生视频相关参数
+    /// 单图生视频：图片路径或URL（支持本地路径、http/https URL、base64）
+    pub image: Option<String>,
+    /// 多图生视频/关键帧：图片路径或URL数组
+    pub images: Option<Vec<String>>,
+    /// 图生视频模式："single" | "multi" | "keyframes"
+    pub image_mode: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

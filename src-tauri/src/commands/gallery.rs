@@ -61,10 +61,21 @@ pub fn delete_image(path: String) -> Result<(), String> {
 
 #[tauri::command]
 pub fn open_output_dir(path: String) -> Result<(), String> {
+    // 如果是相对路径，拼接项目根目录
+    let output_path = Path::new(&path);
+    let full_path = if output_path.is_relative() {
+        crate::get_project_root().join(&path)
+    } else {
+        output_path.to_path_buf()
+    };
+
+    let full_path_str = full_path.to_string_lossy().to_string();
+    crate::log_message(&format!("[open_output_dir] 打开目录: 原始路径={}, 完整路径={}", path, full_path_str));
+
     #[cfg(target_os = "windows")]
     {
         std::process::Command::new("explorer")
-            .arg(&path)
+            .arg(&full_path_str)
             .spawn()
             .map_err(|e| format!("打开目录失败: {}", e))?;
     }
@@ -72,7 +83,7 @@ pub fn open_output_dir(path: String) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
         std::process::Command::new("open")
-            .arg(&path)
+            .arg(&full_path_str)
             .spawn()
             .map_err(|e| format!("打开目录失败: {}", e))?;
     }
@@ -80,7 +91,7 @@ pub fn open_output_dir(path: String) -> Result<(), String> {
     #[cfg(target_os = "linux")]
     {
         std::process::Command::new("xdg-open")
-            .arg(&path)
+            .arg(&full_path_str)
             .spawn()
             .map_err(|e| format!("打开目录失败: {}", e))?;
     }

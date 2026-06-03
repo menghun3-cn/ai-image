@@ -140,6 +140,8 @@ export async function batchGenerateImages(options: BatchGenerationOptions): Prom
 }
 
 // 视频生成相关
+export type VideoGenerationMode = "text" | "single" | "multi" | "keyframes";
+
 export interface VideoGenerationOptions {
   prompt: string;
   output_dir: string;
@@ -149,6 +151,10 @@ export interface VideoGenerationOptions {
   frame_rate?: number;
   seed?: number;
   negative_prompt?: string;
+  // 图生视频相关参数
+  image?: string;
+  images?: string[];
+  image_mode?: VideoGenerationMode;
 }
 
 export interface VideoGenerationResult {

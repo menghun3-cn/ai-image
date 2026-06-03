@@ -152,6 +152,46 @@ impl ImageProvider for AgnesProvider {
 
 // 视频生成实现（非 trait 方法）
 impl AgnesProvider {
+    /// 将图片路径或URL转换为 Base64 或保持URL
+    /// 支持：本地文件路径、http/https URL、data URL
+    async fn process_image_input(&self, image_input: &str) -> Result<String> {
+        // 如果已经是 data URL，直接返回
+        if image_input.starts_with("data:image/") {
+            return Ok(image_input.to_string());
+        }
+
+        // 如果是 http/https URL，直接返回
+        if image_input.starts_with("http://") || image_input.starts_with("https://") {
+            return Ok(image_input.to_string());
+        }
+
+        // 本地文件路径，读取并转为 Base64
+        let path = std::path::Path::new(image_input);
+        if !path.exists() {
+            return Err(ProviderError::InvalidResponse(format!("图片文件不存在: {}", image_input)));
+        }
+
+        let image_data = tokio::fs::read(path)
+            .await
+            .map_err(|e| ProviderError::FileSystem(e))?;
+
+        // 检测图片类型
+        let mime_type = match path.extension().and_then(|e| e.to_str()) {
+            Some("png") => "image/png",
+            Some("jpg") | Some("jpeg") => "image/jpeg",
+            Some("webp") => "image/webp",
+            Some("gif") => "image/gif",
+            _ => "image/png",
+        };
+
+        let base64_data = base64::Engine::encode(
+            &base64::engine::general_purpose::STANDARD,
+            &image_data
+        );
+
+        Ok(format!("data:{};base64,{}", mime_type, base64_data))
+    }
+
     pub async fn generate_video(&self, options: &VideoGenerationOptions, app: &tauri::AppHandle) -> Result<VideoGenerationResult> {
         let model = "agnes-video-v2.0";
 
@@ -160,6 +200,10 @@ impl AgnesProvider {
         } else {
             self.config.api_key.clone()
         };
+
+        // 判断是否为图生视频模式
+        let image_mode = options.image_mode.as_deref().unwrap_or("text");
+        let is_image_to_video = image_mode != "text" && (options.image.is_some() || options.images.is_some());
 
         // 构建请求体，只添加非空参数
         let mut request_body = serde_json::json!({
@@ -186,6 +230,45 @@ impl AgnesProvider {
             request_body["negative_prompt"] = serde_json::json!(negative_prompt);
         }
 
+        // 处理图生视频参数
+        if is_image_to_video {
+            crate::log_message(&format!("[Agnes Video] 图生视频模式: {}", image_mode));
+
+            match image_mode {
+                "single" => {
+                    // 单图生视频：直接使用 image 参数
+                    if let Some(image_path) = &options.image {
+                        let processed_image = self.process_image_input(image_path).await?;
+                        request_body["image"] = serde_json::json!(processed_image);
+                        crate::log_message(&format!("[Agnes Video] 单图模式，图片已处理"));
+                    }
+                }
+                "multi" | "keyframes" => {
+                    // 多图/关键帧模式：使用 extra_body.image 数组
+                    if let Some(images) = &options.images {
+                        let mut processed_images = Vec::new();
+                        for image_path in images {
+                            let processed = self.process_image_input(image_path).await?;
+                            processed_images.push(processed);
+                        }
+
+                        let mut extra_body = serde_json::json!({
+                            "image": processed_images
+                        });
+
+                        // 关键帧模式添加 mode 参数
+                        if image_mode == "keyframes" {
+                            extra_body["mode"] = serde_json::json!("keyframes");
+                        }
+
+                        request_body["extra_body"] = extra_body;
+                        crate::log_message(&format!("[Agnes Video] {}模式，已处理 {} 张图片", image_mode, processed_images.len()));
+                    }
+                }
+                _ => {}
+            }
+        }
+
         let create_endpoint = if self.config.endpoint.is_empty() {
             "https://apihub.agnes-ai.com/v1/videos".to_string()
         } else {
@@ -193,6 +276,7 @@ impl AgnesProvider {
         };
 
         crate::log_message(&format!("[Agnes Video] ========== 开始视频生成任务 =========="));
+        crate::log_message(&format!("[Agnes Video] 模式: {}", if is_image_to_video { "图生视频" } else { "文生视频" }));
         crate::log_message(&format!("[Agnes Video] 创建任务: POST {}", create_endpoint));
         crate::log_message(&format!("[Agnes Video] 请求体: {}", serde_json::to_string(&request_body).unwrap_or_default()));
         crate::log_message(&format!("[Agnes Video] API Key: {}", key_preview));

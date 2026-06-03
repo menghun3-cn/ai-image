@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, watch, onUnmounted } from "vue";
-import { generateVideo, getVideoOutputDir, openOutputDir, type VideoGenerationResult } from "@/lib/tauri";
+import { generateVideo, getVideoOutputDir, openOutputDir, type VideoGenerationMode } from "@/lib/tauri";
 import { readFile } from "@tauri-apps/plugin-fs";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { VideoIcon, Loader2Icon, FolderOpenIcon, PlayIcon, AlertCircleIcon, Settings2Icon, XIcon, InfoIcon, CheckCircleIcon } from "lucide-vue-next";
+import { open } from "@tauri-apps/plugin-dialog";
+import { VideoIcon, Loader2Icon, FolderOpenIcon, PlayIcon, AlertCircleIcon, Settings2Icon, XIcon, InfoIcon, CheckCircleIcon, ImageIcon, UploadIcon, LinkIcon } from "lucide-vue-next";
 
 // 从 localStorage 恢复状态
 const savedState = localStorage.getItem("videoGenerationState");
@@ -74,10 +75,42 @@ let timerInterval: ReturnType<typeof setInterval> | null = null;
 // 视频参数
 const width = ref(1152);
 const height = ref(768);
-const numFrames = ref(121); // 默认约 5 秒 (121帧 / 24fps ≈ 5s)
+const numFrames = ref(121);
 const frameRate = ref(24);
 const seed = ref<number | undefined>(undefined);
 const negativePrompt = ref("");
+
+// 图片管理 - 统一使用一个数组，支持本地路径和URL
+interface ImageItem {
+  id: string;
+  path: string; // 本地路径或URL
+  type: 'local' | 'url';
+  name: string;
+}
+const imageItems = ref<ImageItem[]>([]);
+const showUrlInput = ref(false);
+const urlInput = ref("");
+const isKeyframesMode = ref(false);
+
+// 计算当前生成模式
+const detectedMode = computed<VideoGenerationMode>(() => {
+  const count = imageItems.value.length;
+  if (count === 0) return "text";
+  if (count === 1) return "single";
+  if (isKeyframesMode.value) return "keyframes";
+  return "multi";
+});
+
+// 模式显示文本
+const modeDisplayText = computed(() => {
+  switch (detectedMode.value) {
+    case "text": return "文生视频";
+    case "single": return "单图生视频";
+    case "multi": return "多图生视频";
+    case "keyframes": return "关键帧模式";
+    default: return "文生视频";
+  }
+});
 
 // 预设时长选项
 const durationPresets = [
@@ -86,7 +119,7 @@ const durationPresets = [
   { label: "10 秒", frames: 241, fps: 24 },
 ];
 
-const selectedDuration = ref(1); // 默认 5 秒
+const selectedDuration = ref(1);
 
 // 分辨率选项
 const resolutionPresets = [
@@ -95,7 +128,114 @@ const resolutionPresets = [
   { label: "1024 x 1024 (1:1)", width: 1024, height: 1024 },
 ];
 
-const selectedResolution = ref(0); // 默认 16:9
+const selectedResolution = ref(0);
+
+// 生成唯一ID
+function generateId(): string {
+  return Date.now().toString(36) + Math.random().toString(36).substr(2);
+}
+
+// 判断是否为URL
+function isUrl(str: string): boolean {
+  return str.startsWith('http://') || str.startsWith('https://') || str.startsWith('data:image/');
+}
+
+// 选择本地图片
+async function selectLocalImages() {
+  const selected = await open({
+    multiple: true,
+    filters: [
+      { name: "图片", extensions: ["png", "jpg", "jpeg", "webp", "gif"] },
+    ],
+  });
+  if (selected && Array.isArray(selected)) {
+    // 限制最多5张图片
+    const remainingSlots = 5 - imageItems.value.length;
+    const pathsToAdd = selected.slice(0, remainingSlots);
+    
+    pathsToAdd.forEach(path => {
+      imageItems.value.push({
+        id: generateId(),
+        path: path,
+        type: 'local',
+        name: path.split('\\').pop() || path.split('/').pop() || '图片'
+      });
+    });
+    
+    if (selected.length > remainingSlots) {
+      showToast("info", "最多只能选择5张图片", 3000);
+    }
+  } else if (selected && typeof selected === 'string') {
+    // 单选情况
+    if (imageItems.value.length < 5) {
+      const path = selected as string;
+      imageItems.value.push({
+        id: generateId(),
+        path: path,
+        type: 'local',
+        name: path.split('\\').pop() || path.split('/').pop() || '图片'
+      });
+    } else {
+      showToast("info", "最多只能选择5张图片", 3000);
+    }
+  }
+}
+
+// 添加URL图片
+function addUrlImage() {
+  const url = urlInput.value.trim();
+  if (!url) {
+    showToast("info", "请输入图片URL");
+    return;
+  }
+  
+  if (!isUrl(url)) {
+    showToast("error", "请输入有效的图片URL (http:// 或 https://)");
+    return;
+  }
+  
+  if (imageItems.value.length >= 5) {
+    showToast("info", "最多只能添加5张图片");
+    return;
+  }
+  
+  // 从URL提取文件名
+  let name = '网络图片';
+  try {
+    const urlObj = new URL(url);
+    const pathname = urlObj.pathname;
+    const filename = pathname.split('/').pop();
+    if (filename) {
+      name = decodeURIComponent(filename);
+    }
+  } catch {
+    // URL解析失败，使用默认名称
+  }
+  
+  imageItems.value.push({
+    id: generateId(),
+    path: url,
+    type: 'url',
+    name: name
+  });
+  
+  urlInput.value = "";
+  showUrlInput.value = false;
+  showToast("success", "图片URL已添加");
+}
+
+// 移除图片
+function removeImage(id: string) {
+  const index = imageItems.value.findIndex(item => item.id === id);
+  if (index > -1) {
+    imageItems.value.splice(index, 1);
+  }
+}
+
+// 清空所有图片
+function clearAllImages() {
+  imageItems.value = [];
+}
 
 // 计算实际视频时长
 const videoDuration = computed(() => {
@@ -106,7 +246,7 @@ const videoDuration = computed(() => {
 const videoBlobUrl = ref<string | null>(null);
 const videoPlayer = ref<HTMLVideoElement | null>(null);
 
-// 加载视频 - 方案1: 使用 convertFileSrc (推荐，性能更好)
+// 加载视频
 async function loadVideo(path: string | null) {
   if (!path) {
     videoBlobUrl.value = null;
@@ -114,38 +254,20 @@ async function loadVideo(path: string | null) {
   }
   
   try {
-    console.log("[Video] ========== 开始加载视频 ==========");
-    console.log("[Video] 原始路径:", path);
-    
-    // 检查文件是否存在
-    try {
-      const fileData = await readFile(path);
-      console.log("[Video] 文件存在，大小:", fileData.length, "bytes");
-      console.log("[Video] 文件前20字节:", Array.from(fileData.slice(0, 20)).map(b => b.toString(16).padStart(2, '0')).join('-'));
-    } catch (e) {
-      console.error("[Video] 文件读取失败:", e);
-    }
-    
-    // 方案1: 使用 Tauri 的 convertFileSrc 转换本地文件路径
     const assetUrl = convertFileSrc(path);
-    console.log("[Video] convertFileSrc 结果:", assetUrl);
-    console.log("[Video] URL 协议:", assetUrl.split(':')[0]);
     
-    // 释放旧的 URL
     if (videoBlobUrl.value && videoBlobUrl.value.startsWith('blob:')) {
       URL.revokeObjectURL(videoBlobUrl.value);
     }
     
     videoBlobUrl.value = assetUrl;
-    console.log("[Video] videoBlobUrl 已设置为:", videoBlobUrl.value);
-    
   } catch (error) {
-    console.error("[Video] convertFileSrc 方案失败，尝试 Blob 方案:", error);
+    console.error("[Video] 加载失败:", error);
     await loadVideoBlob(path);
   }
 }
 
-// 备用方案: 使用 Blob URL (如果 convertFileSrc 失败)
+// 备用方案: 使用 Blob URL
 async function loadVideoBlob(path: string | null) {
   if (!path) {
     videoBlobUrl.value = null;
@@ -153,13 +275,9 @@ async function loadVideoBlob(path: string | null) {
   }
   
   try {
-    console.log("[Video] 使用 Blob 方案加载视频:", path);
     const fileData = await readFile(path);
-    console.log("[Video] 文件读取成功，大小:", fileData.length, "bytes");
-    
     const blob = new Blob([fileData], { type: 'video/mp4' });
     const url = URL.createObjectURL(blob);
-    console.log("[Video] Blob URL 创建成功:", url);
     
     if (videoBlobUrl.value && videoBlobUrl.value.startsWith('blob:')) {
       URL.revokeObjectURL(videoBlobUrl.value);
@@ -173,62 +291,31 @@ async function loadVideoBlob(path: string | null) {
   }
 }
 
-// 监听视频路径变化，自动加载
+// 监听视频路径变化
 watch(resultVideoPath, (newPath) => {
   loadVideo(newPath);
 }, { immediate: true });
 
 // 视频加载错误处理
 function handleVideoError(e: Event) {
-  console.error("[Video] ========== 视频播放错误 ==========");
   const videoEl = e.target as HTMLVideoElement;
   const error = videoEl.error;
   
-  console.error("[Video] 视频 src:", videoEl.src);
-  console.error("[Video] 视频 currentSrc:", videoEl.currentSrc);
-  console.error("[Video] 视频 networkState:", videoEl.networkState);
-  console.error("[Video] 视频 readyState:", videoEl.readyState);
-  
-  if (error) {
-    console.error("[Video] 错误代码:", error.code);
-    console.error("[Video] 错误信息:", error.message);
-    
-    // 尝试用 Blob 方案重试
-    if (error.code === 4 && resultVideoPath.value) {
-      console.log("[Video] 格式不支持，尝试使用 Blob 方案重试...");
-      loadVideoBlob(resultVideoPath.value);
-      return;
-    }
-    
-    let errorMsg = "视频播放失败";
-    switch (error.code) {
-      case 1:
-        errorMsg = "视频加载被中止";
-        break;
-      case 2:
-        errorMsg = "网络错误，无法加载视频";
-        break;
-      case 3:
-        errorMsg = "视频解码错误，文件可能损坏";
-        break;
-      case 4:
-        errorMsg = "视频格式不支持";
-        break;
-    }
-    showToast("error", errorMsg + "，请尝试打开目录查看");
-  } else {
-    console.error("[Video] 无错误对象");
-    showToast("error", "视频播放失败，请尝试打开目录查看");
+  if (error && error.code === 4 && resultVideoPath.value) {
+    loadVideoBlob(resultVideoPath.value);
+    return;
   }
+  
+  showToast("error", "视频播放失败，请尝试打开目录查看");
 }
-// 监听进度事件的 unlisten 函数
+
+// 监听进度事件
 let unlistenProgress: UnlistenFn | null = null;
 
 onMounted(async () => {
   try {
     videoOutputDir.value = await getVideoOutputDir();
     
-    // 如果之前正在生成，标记为中断
     if (isGenerating.value) {
       isGenerating.value = false;
       generationStatus.value = "error";
@@ -236,42 +323,29 @@ onMounted(async () => {
       saveState();
     }
     
-    // 监听视频生成进度事件
     unlistenProgress = await listen("video-generation-progress", (event) => {
       const payload = event.payload as { status: string; progress: number };
-      console.log("[Video] 收到进度事件:", JSON.stringify(payload));
-      console.log("[Video] 当前状态:", generationStatus.value, "进度:", generationProgress.value);
-      
-      // 更新进度
       generationProgress.value = payload.progress;
-      console.log("[Video] 进度已更新为:", generationProgress.value);
       
-      // 根据状态更新 generationStatus
       const statusUpper = payload.status.toUpperCase();
-      console.log("[Video] 处理状态:", statusUpper);
-      
       if (statusUpper === "COMPLETED" || statusUpper === "SUCCESS") {
         generationStatus.value = "downloading";
-      } else if (statusUpper === "FAILED" || statusUpper === "ERROR" || statusUpper === "FAILURE") {
+      } else if (statusUpper === "FAILED" || statusUpper === "ERROR") {
         generationStatus.value = "error";
-      } else if (statusUpper === "QUEUED" || statusUpper === "PENDING" || statusUpper === "CREATED") {
-        // 排队中，切换到 processing 状态以显示进度
+      } else if (statusUpper === "QUEUED" || statusUpper === "PENDING") {
         if (generationStatus.value === "creating") {
           generationStatus.value = "processing";
-          console.log("[Video] 状态已切换到 processing");
         }
       } else {
-        // PROCESSING, RUNNING, IN_PROGRESS 等
         generationStatus.value = "processing";
       }
     });
   } catch (e) {
-    console.error("获取视频输出目录失败:", e);
+    console.error("初始化失败:", e);
   }
 });
 
 onUnmounted(() => {
-  // 清理事件监听
   if (unlistenProgress) {
     unlistenProgress();
   }
@@ -306,9 +380,8 @@ async function handleGenerate() {
   generationStatus.value = "creating";
   errorMessage.value = null;
   resultVideoPath.value = null;
-  generationProgress.value = 0; // 重置进度
+  generationProgress.value = 0;
 
-  // 开始计时
   startTime.value = Date.now();
   elapsedTime.value = 0;
   timerInterval = setInterval(() => {
@@ -319,23 +392,29 @@ async function handleGenerate() {
 
   try {
     generationStatus.value = "processing";
-    
-    // 使用 Promise 让出控制权，确保事件监听器可以处理事件
-    const result = await new Promise<VideoGenerationResult>((resolve) => {
-      setTimeout(async () => {
-        const r = await generateVideo({
-          prompt: prompt.value.trim(),
-          output_dir: videoOutputDir.value,
-          width: width.value,
-          height: height.value,
-          num_frames: numFrames.value,
-          frame_rate: frameRate.value,
-          seed: seed.value,
-          negative_prompt: negativePrompt.value || undefined,
-        });
-        resolve(r);
-      }, 100);
-    });
+
+    // 构建生成选项
+    const options: any = {
+      prompt: prompt.value.trim(),
+      output_dir: videoOutputDir.value,
+      width: width.value,
+      height: height.value,
+      num_frames: numFrames.value,
+      frame_rate: frameRate.value,
+      seed: seed.value,
+      negative_prompt: negativePrompt.value || undefined,
+      image_mode: detectedMode.value,
+    };
+
+    // 根据图片数量添加参数
+    const imageCount = imageItems.value.length;
+    if (imageCount === 1) {
+      options.image = imageItems.value[0].path;
+    } else if (imageCount >= 2) {
+      options.images = imageItems.value.map(item => item.path);
+    }
+
+    const result = await generateVideo(options);
 
     if (result.success && result.video_path) {
       generationStatus.value = "success";
@@ -352,7 +431,6 @@ async function handleGenerate() {
     showToast("error", String(e));
   } finally {
     isGenerating.value = false;
-    // 停止计时
     if (timerInterval) {
       clearInterval(timerInterval);
       timerInterval = null;
@@ -370,9 +448,7 @@ async function handleOpenOutputDir() {
 
 function getStatusText() {
   const timeStr = elapsedTime.value > 0 ? ` (${elapsedTimeFormatted.value})` : "";
-  // 只要有进度就显示，包括0%
   const progressStr = isGenerating.value ? ` ${generationProgress.value}%` : "";
-  console.log("[Video] getStatusText:", generationStatus.value, "进度:", generationProgress.value, "显示:", progressStr);
   switch (generationStatus.value) {
     case "creating":
       return `创建任务中...${timeStr}`;
@@ -426,7 +502,7 @@ function getStatusText() {
         生成视频
       </h1>
       <p class="text-muted-foreground mt-1">
-        使用 Agnes AI 将文字描述转换为视频
+        使用 Agnes AI 将文字描述或图片转换为视频
       </p>
     </div>
 
@@ -434,13 +510,127 @@ function getStatusText() {
     <div class="flex-1 flex gap-6 overflow-hidden">
       <!-- Left Panel - Input -->
       <div class="flex-1 flex flex-col gap-4 overflow-y-auto">
+        <!-- Current Mode Display -->
+        <div class="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+          <div class="flex items-center gap-2">
+            <span class="text-sm text-muted-foreground">当前模式:</span>
+            <span class="text-sm font-medium px-2 py-1 bg-primary/10 text-primary rounded">
+              {{ modeDisplayText }}
+            </span>
+          </div>
+          <span class="text-xs text-muted-foreground">
+            {{ imageItems.length === 0 ? '未选择图片' : `已选择 ${imageItems.length} 张图片` }}
+          </span>
+        </div>
+
+        <!-- Image Upload Section -->
+        <div class="flex flex-col gap-2">
+          <div class="flex items-center justify-between">
+            <label class="text-sm font-medium">参考图片 (可选)</label>
+            <div class="flex items-center gap-2">
+              <!-- 关键帧模式开关 (仅当图片>=2时显示) -->
+              <label v-if="imageItems.length >= 2" class="flex items-center gap-2 text-sm cursor-pointer">
+                <input
+                  v-model="isKeyframesMode"
+                  type="checkbox"
+                  class="rounded border"
+                  :disabled="isGenerating"
+                />
+                <span class="text-muted-foreground">关键帧模式</span>
+              </label>
+              <button
+                v-if="imageItems.length > 0"
+                @click="clearAllImages"
+                class="text-xs text-destructive hover:underline"
+                :disabled="isGenerating"
+              >
+                清空全部
+              </button>
+            </div>
+          </div>
+
+          <!-- Image List -->
+          <div v-if="imageItems.length > 0" class="space-y-2">
+            <div
+              v-for="(item, index) in imageItems"
+              :key="item.id"
+              class="flex items-center gap-3 border rounded-lg p-3"
+            >
+              <span class="w-6 h-6 rounded-full bg-primary/10 text-primary text-xs flex items-center justify-center font-medium">
+                {{ index + 1 }}
+              </span>
+              <ImageIcon v-if="item.type === 'local'" class="w-5 h-5 text-muted-foreground" />
+              <LinkIcon v-else class="w-5 h-5 text-blue-500" />
+              <span class="flex-1 text-sm truncate" :title="item.path">
+                {{ item.name }}
+              </span>
+              <span v-if="item.type === 'url'" class="text-xs text-blue-500">URL</span>
+              <button
+                @click="removeImage(item.id)"
+                class="p-1.5 hover:bg-destructive/10 text-destructive rounded transition-colors"
+                :disabled="isGenerating"
+              >
+                <XIcon class="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          <!-- Add Image Buttons -->
+          <div v-if="imageItems.length < 5" class="flex gap-2">
+            <button
+              @click="selectLocalImages"
+              class="flex-1 border-2 border-dashed border-muted-foreground/25 rounded-lg p-4 flex items-center justify-center gap-2 hover:border-primary/50 hover:bg-muted/50 transition-colors"
+              :class="{ 'pointer-events-none opacity-50': isGenerating }"
+            >
+              <UploadIcon class="w-5 h-5 text-muted-foreground" />
+              <span class="text-sm text-muted-foreground">选择本地图片</span>
+            </button>
+            <button
+              @click="showUrlInput = !showUrlInput"
+              class="flex-1 border-2 border-dashed border-muted-foreground/25 rounded-lg p-4 flex items-center justify-center gap-2 hover:border-primary/50 hover:bg-muted/50 transition-colors"
+              :class="{ 'pointer-events-none opacity-50': isGenerating }"
+            >
+              <LinkIcon class="w-5 h-5 text-muted-foreground" />
+              <span class="text-sm text-muted-foreground">添加图片URL</span>
+            </button>
+          </div>
+
+          <!-- URL Input -->
+          <div v-if="showUrlInput" class="flex gap-2">
+            <input
+              v-model="urlInput"
+              type="text"
+              placeholder="输入图片URL (http:// 或 https://)"
+              class="flex-1 px-3 py-2 rounded-lg border bg-background text-sm"
+              @keyup.enter="addUrlImage"
+            />
+            <button
+              @click="addUrlImage"
+              class="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm hover:bg-primary/90"
+            >
+              添加
+            </button>
+          </div>
+
+          <!-- Mode Hint -->
+          <p class="text-xs text-muted-foreground">
+            <span v-if="imageItems.length === 0">不选择图片将使用文生视频模式</span>
+            <span v-else-if="imageItems.length === 1">已选择1张图片，将使用单图生视频模式</span>
+            <span v-else-if="imageItems.length >= 2">
+              已选择{{ imageItems.length }}张图片，将使用{{ isKeyframesMode ? '关键帧' : '多图' }}模式
+            </span>
+          </p>
+        </div>
+
         <!-- Prompt Input -->
         <div class="flex flex-col gap-2">
           <label class="text-sm font-medium">视频描述</label>
           <textarea
             v-model="prompt"
             @input="updatePrompt(($event.target as HTMLTextAreaElement).value)"
-            placeholder="描述你想要生成的视频内容，例如：一只可爱的猫咪在草地上玩耍..."
+            :placeholder="imageItems.length === 0
+              ? '描述你想要生成的视频内容，例如：一只可爱的猫咪在草地上玩耍...'
+              : '描述视频动画效果，例如：The woman slowly turns around and looks back at the camera...'"
             class="min-h-[120px] p-4 rounded-lg border bg-background resize-none focus:outline-none focus:ring-2 focus:ring-primary"
             :disabled="isGenerating"
           />
@@ -571,7 +761,7 @@ function getStatusText() {
         >
           <Loader2Icon v-if="isGenerating" class="w-5 h-5 animate-spin" />
           <VideoIcon v-else class="w-5 h-5" />
-          {{ isGenerating ? "生成中..." : "生成视频" }}
+          {{ isGenerating ? "生成中..." : `生成视频 (${modeDisplayText})` }}
         </button>
 
         <!-- Status -->
@@ -607,42 +797,27 @@ function getStatusText() {
       </div>
 
       <!-- Right Panel - Result -->
-      <div class="w-[400px] flex flex-col gap-4">
-        <div class="flex-1 border rounded-lg bg-muted/50 flex flex-col items-center justify-center p-4 min-h-[300px]">
-          <template v-if="videoBlobUrl">
-            <div class="w-full h-full flex flex-col">
-              <video
-                ref="videoPlayer"
-                :src="videoBlobUrl"
-                controls
-                preload="auto"
-                playsinline
-                class="max-w-full max-h-full rounded-lg flex-1"
-                @error="handleVideoError"
-                @loadeddata="console.log('[Video] 视频数据已加载')"
-                @canplay="console.log('[Video] 视频可以播放')"
-              />
-              <p class="text-xs text-muted-foreground mt-2 break-all">{{ resultVideoPath }}</p>
-            </div>
-          </template>
-          <template v-else>
-            <VideoIcon class="w-16 h-16 text-muted-foreground/50 mb-4" />
-            <p class="text-muted-foreground text-center">
-              生成的视频将在这里显示
-            </p>
-          </template>
+      <div class="w-[480px] flex flex-col gap-4">
+        <!-- Video Preview -->
+        <div class="flex-1 border rounded-lg overflow-hidden bg-black flex items-center justify-center relative">
+          <video
+            v-if="videoBlobUrl"
+            ref="videoPlayer"
+            :src="videoBlobUrl"
+            controls
+            class="max-w-full max-h-full"
+            @error="handleVideoError"
+          />
+          <div v-else class="text-center p-8">
+            <VideoIcon class="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+            <p class="text-muted-foreground">生成的视频将在这里显示</p>
+          </div>
         </div>
 
-        <!-- Info Card -->
-        <div class="p-4 border rounded-lg bg-card">
-          <h3 class="font-medium mb-2">关于视频生成</h3>
-          <ul class="text-sm text-muted-foreground space-y-1">
-            <li>• 使用 Agnes AI 视频模型</li>
-            <li>• 生成时间可能需要几分钟</li>
-            <li>• 视频保存为 MP4 格式</li>
-            <li>• 需要配置 Agnes API Key</li>
-            <li>• 帧数必须满足 8n + 1 公式</li>
-          </ul>
+        <!-- Video Info -->
+        <div v-if="resultVideoPath" class="p-4 border rounded-lg space-y-2">
+          <p class="text-sm font-medium">视频信息</p>
+          <p class="text-xs text-muted-foreground break-all">{{ resultVideoPath.replace(/^.*[\\/]/, '/video/') }}</p>
         </div>
       </div>
     </div>
@@ -654,12 +829,10 @@ function getStatusText() {
 .toast-leave-active {
   transition: all 0.3s ease;
 }
-
 .toast-enter-from {
   opacity: 0;
   transform: translateX(100%);
 }
-
 .toast-leave-to {
   opacity: 0;
   transform: translateX(100%);
