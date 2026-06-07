@@ -352,22 +352,24 @@ impl AgnesProvider {
             .await
             .map_err(|e| ProviderError::InvalidResponse(e.to_string()))?;
 
-        let task_id = create_result
-            .get("task_id")
+        let video_id = create_result
+            .get("video_id")
             .and_then(|t| t.as_str())
-            .ok_or_else(|| ProviderError::InvalidResponse("响应中未找到 task_id".to_string()))?;
+            .ok_or_else(|| ProviderError::InvalidResponse("响应中未找到 video_id".to_string()))?;
 
-        crate::log_message(&format!("[Agnes Video] 任务创建成功, task_id: {}", task_id));
+        crate::log_message(&format!("[Agnes Video] 任务创建成功, video_id: {}", video_id));
 
         // 步骤2: 轮询获取结果
+        // 新 API 使用 query 参数方式查询: /agnesapi?video_id=<VIDEO_ID>
+        // 注意: 这个端点不使用 /v1 前缀
         let retrieve_endpoint = if self.config.endpoint.is_empty() {
-            format!("https://apihub.agnes-ai.com/v1/videos/{}", task_id)
+            format!("https://apihub.agnes-ai.com/agnesapi?video_id={}", video_id)
         } else {
-            format!(
-                "{}/videos/{}",
-                self.config.endpoint.trim_end_matches('/'),
-                task_id
-            )
+            // 如果用户配置了自定义端点，需要确保不包含 /v1 后缀
+            let base_endpoint = self.config.endpoint.trim_end_matches('/');
+            // 移除可能的 /v1 后缀
+            let base_endpoint = base_endpoint.trim_end_matches("/v1").trim_end_matches('/');
+            format!("{}/agnesapi?video_id={}", base_endpoint, video_id)
         };
 
         let video_url = loop {

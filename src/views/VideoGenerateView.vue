@@ -112,11 +112,13 @@ const modeDisplayText = computed(() => {
   }
 });
 
-// 预设时长选项
+// 预设时长选项 - 根据 Agnes API 文档: num_frames 必须满足 8n + 1 且 ≤ 441
+// 3秒: 81帧, 5秒: 121帧, 10秒: 241帧, 18秒: 441帧 (frame_rate=24)
 const durationPresets = [
-  { label: "3 秒", frames: 73, fps: 24 },
+  { label: "3 秒", frames: 81, fps: 24 },
   { label: "5 秒", frames: 121, fps: 24 },
   { label: "10 秒", frames: 241, fps: 24 },
+  { label: "18 秒", frames: 441, fps: 24 },
 ];
 
 const selectedDuration = ref(1);
