@@ -234,3 +234,28 @@ export async function deleteVideo(path: string): Promise<void> {
 export async function openVideoDir(path: string): Promise<void> {
   return invoke("open_video_dir", { path });
 }
+
+// 通用提供商模型获取
+export interface ProviderModel {
+  id: string;
+  name: string;
+  description: string;
+}
+
+export interface FetchProviderModelsRequest {
+  provider: string;
+  api_key: string;
+  endpoint?: string;
+}
+
+export interface FetchProviderModelsResponse {
+  success: boolean;
+  message: string;
+  models?: ProviderModel[];
+}
+
+export async function fetchProviderModels(
+  request: FetchProviderModelsRequest
+): Promise<FetchProviderModelsResponse> {
+  return invoke<FetchProviderModelsResponse>("fetch_provider_models", { request });
+}

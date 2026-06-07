@@ -66,6 +66,7 @@ fn main() {
             commands::get_videos,
             commands::delete_video,
             commands::open_video_dir,
+            commands::fetch_provider_models,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

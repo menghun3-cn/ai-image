@@ -4,6 +4,7 @@ pub mod config;
 pub mod gallery;
 pub mod generate;
 pub mod optimize;
+pub mod provider_models;
 pub mod video;
 pub mod video_gallery;
 
@@ -13,5 +14,6 @@ pub use config::*;
 pub use gallery::*;
 pub use generate::*;
 pub use optimize::*;
+pub use provider_models::*;
 pub use video::*;
 pub use video_gallery::*;

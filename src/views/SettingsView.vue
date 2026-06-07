@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, watch, nextTick } from "vue";
-import { loadConfig, saveConfig, updateAgnesModels, getAgnesModels } from "@/lib/tauri";
-import type { AppConfig, AgnesModelsStore } from "@/lib/tauri";
+import { loadConfig, saveConfig, updateAgnesModels, getAgnesModels, fetchProviderModels } from "@/lib/tauri";
+import type { AppConfig, AgnesModelsStore, ProviderModel } from "@/lib/tauri";
 import Dialog from "@/components/Dialog.vue";
 import { InfoIcon, SlidersIcon, KeyIcon, GlobeIcon, FolderIcon, EyeIcon, EyeOffIcon, ExternalLinkIcon, RefreshCwIcon } from "lucide-vue-next";
 
@@ -24,6 +24,10 @@ const saveError = ref<string | null>(null);
 const agnesModels = ref<AgnesModelsStore | null>(null);
 const isUpdatingModels = ref(false);
 const lastUpdateTime = ref<string>("");
+
+// 各平台模型状态
+const providerModels = ref<Record<string, ProviderModel[]>>({});
+const isFetchingModels = ref<Record<string, boolean>>({});
 
 // 对话框状态
 const dialog = ref({
@@ -193,6 +197,52 @@ async function handleUpdateAgnesModels() {
     });
   } finally {
     isUpdatingModels.value = false;
+  }
+}
+
+// 获取提供商模型列表
+async function handleFetchProviderModels(provider: string) {
+  if (!config.value) return;
+  
+  const apiKey = config.value.providers[provider as keyof typeof config.value.providers].api_key;
+  if (!apiKey) {
+    await showDialog({
+      title: "提示",
+      message: `请先配置 ${provider} API Key`,
+      type: "warning",
+    });
+    return;
+  }
+
+  isFetchingModels.value[provider] = true;
+  try {
+    const result = await fetchProviderModels({
+      provider,
+      api_key: apiKey,
+    });
+    
+    if (result.success && result.models) {
+      providerModels.value[provider] = result.models;
+      await showDialog({
+        title: "成功",
+        message: result.message,
+        type: "success",
+      });
+    } else {
+      await showDialog({
+        title: "失败",
+        message: result.message,
+        type: "error",
+      });
+    }
+  } catch (e) {
+    await showDialog({
+      title: "错误",
+      message: "获取模型失败: " + String(e),
+      type: "error",
+    });
+  } finally {
+    isFetchingModels.value[provider] = false;
   }
 }
 
@@ -384,7 +434,27 @@ const tabs = [
                   <EyeOffIcon v-else class="w-4 h-4" />
                 </button>
               </div>
-              <p class="text-xs text-muted-foreground mt-1.5">用于图片生成和提示词优化</p>
+              <div class="flex items-center justify-between mt-3">
+                <p class="text-xs text-muted-foreground">用于图片生成和提示词优化</p>
+                <button
+                  type="button"
+                  @click="handleFetchProviderModels('openrouter')"
+                  :disabled="isFetchingModels['openrouter']"
+                  class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  <RefreshCwIcon class="w-3 h-3" :class="{ 'animate-spin': isFetchingModels['openrouter'] }" />
+                  {{ isFetchingModels['openrouter'] ? '获取中...' : '获取模型' }}
+                </button>
+              </div>
+              <!-- 模型列表 -->
+              <div v-if="providerModels['openrouter']?.length" class="mt-3 p-2 bg-muted/50 rounded">
+                <div class="text-xs font-medium text-foreground mb-1">可用模型 ({{ providerModels['openrouter'].length }})</div>
+                <div class="flex flex-wrap gap-1">
+                  <span v-for="model in providerModels['openrouter']" :key="model.id" class="px-1.5 py-0.5 bg-background rounded text-xs text-muted-foreground break-all">
+                    {{ model.id }}
+                  </span>
+                </div>
+              </div>
             </div>
 
             <div class="p-4 rounded-lg border bg-card">
@@ -418,6 +488,27 @@ const tabs = [
                   <EyeIcon v-if="showKeys.modelscope" class="w-4 h-4" />
                   <EyeOffIcon v-else class="w-4 h-4" />
                 </button>
+              </div>
+              <div class="flex items-center justify-between mt-3">
+                <p class="text-xs text-muted-foreground">阿里云 ModelScope 平台</p>
+                <button
+                  type="button"
+                  @click="handleFetchProviderModels('modelscope')"
+                  :disabled="isFetchingModels['modelscope']"
+                  class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  <RefreshCwIcon class="w-3 h-3" :class="{ 'animate-spin': isFetchingModels['modelscope'] }" />
+                  {{ isFetchingModels['modelscope'] ? '获取中...' : '获取模型' }}
+                </button>
+              </div>
+              <!-- 模型列表 -->
+              <div v-if="providerModels['modelscope']?.length" class="mt-3 p-2 bg-muted/50 rounded">
+                <div class="text-xs font-medium text-foreground mb-1">可用模型 ({{ providerModels['modelscope'].length }})</div>
+                <div class="flex flex-wrap gap-1">
+                  <span v-for="model in providerModels['modelscope']" :key="model.id" class="px-1.5 py-0.5 bg-background rounded text-xs text-muted-foreground break-all">
+                    {{ model.id }}
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -453,6 +544,27 @@ const tabs = [
                   <EyeOffIcon v-else class="w-4 h-4" />
                 </button>
               </div>
+              <div class="flex items-center justify-between mt-3">
+                <p class="text-xs text-muted-foreground">NVIDIA NIM 平台</p>
+                <button
+                  type="button"
+                  @click="handleFetchProviderModels('nvidia')"
+                  :disabled="isFetchingModels['nvidia']"
+                  class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  <RefreshCwIcon class="w-3 h-3" :class="{ 'animate-spin': isFetchingModels['nvidia'] }" />
+                  {{ isFetchingModels['nvidia'] ? '获取中...' : '获取模型' }}
+                </button>
+              </div>
+              <!-- 模型列表 -->
+              <div v-if="providerModels['nvidia']?.length" class="mt-3 p-2 bg-muted/50 rounded">
+                <div class="text-xs font-medium text-foreground mb-1">可用模型 ({{ providerModels['nvidia'].length }})</div>
+                <div class="flex flex-wrap gap-1">
+                  <span v-for="model in providerModels['nvidia']" :key="model.id" class="px-1.5 py-0.5 bg-background rounded text-xs text-muted-foreground break-all">
+                    {{ model.id }}
+                  </span>
+                </div>
+              </div>
             </div>
 
             <div class="p-4 rounded-lg border bg-card">
@@ -486,6 +598,27 @@ const tabs = [
                   <EyeIcon v-if="showKeys.gemini" class="w-4 h-4" />
                   <EyeOffIcon v-else class="w-4 h-4" />
                 </button>
+              </div>
+              <div class="flex items-center justify-between mt-3">
+                <p class="text-xs text-muted-foreground">Google Gemini 平台</p>
+                <button
+                  type="button"
+                  @click="handleFetchProviderModels('gemini')"
+                  :disabled="isFetchingModels['gemini']"
+                  class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  <RefreshCwIcon class="w-3 h-3" :class="{ 'animate-spin': isFetchingModels['gemini'] }" />
+                  {{ isFetchingModels['gemini'] ? '获取中...' : '获取模型' }}
+                </button>
+              </div>
+              <!-- 模型列表 -->
+              <div v-if="providerModels['gemini']?.length" class="mt-3 p-2 bg-muted/50 rounded">
+                <div class="text-xs font-medium text-foreground mb-1">可用模型 ({{ providerModels['gemini'].length }})</div>
+                <div class="flex flex-wrap gap-1">
+                  <span v-for="model in providerModels['gemini']" :key="model.id" class="px-1.5 py-0.5 bg-background rounded text-xs text-muted-foreground break-all">
+                    {{ model.id }}
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -521,6 +654,27 @@ const tabs = [
                   <EyeOffIcon v-else class="w-4 h-4" />
                 </button>
               </div>
+              <div class="flex items-center justify-between mt-3">
+                <p class="text-xs text-muted-foreground">OpenAI 官方平台</p>
+                <button
+                  type="button"
+                  @click="handleFetchProviderModels('openai')"
+                  :disabled="isFetchingModels['openai']"
+                  class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  <RefreshCwIcon class="w-3 h-3" :class="{ 'animate-spin': isFetchingModels['openai'] }" />
+                  {{ isFetchingModels['openai'] ? '获取中...' : '获取模型' }}
+                </button>
+              </div>
+              <!-- 模型列表 -->
+              <div v-if="providerModels['openai']?.length" class="mt-3 p-2 bg-muted/50 rounded">
+                <div class="text-xs font-medium text-foreground mb-1">可用模型 ({{ providerModels['openai'].length }})</div>
+                <div class="flex flex-wrap gap-1">
+                  <span v-for="model in providerModels['openai']" :key="model.id" class="px-1.5 py-0.5 bg-background rounded text-xs text-muted-foreground break-all">
+                    {{ model.id }}
+                  </span>
+                </div>
+              </div>
             </div>
 
             <div class="p-4 rounded-lg border bg-card">
@@ -554,6 +708,27 @@ const tabs = [
                   <EyeIcon v-if="showKeys.siliconflow" class="w-4 h-4" />
                   <EyeOffIcon v-else class="w-4 h-4" />
                 </button>
+              </div>
+              <div class="flex items-center justify-between mt-3">
+                <p class="text-xs text-muted-foreground">SiliconFlow 平台</p>
+                <button
+                  type="button"
+                  @click="handleFetchProviderModels('siliconflow')"
+                  :disabled="isFetchingModels['siliconflow']"
+                  class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  <RefreshCwIcon class="w-3 h-3" :class="{ 'animate-spin': isFetchingModels['siliconflow'] }" />
+                  {{ isFetchingModels['siliconflow'] ? '获取中...' : '获取模型' }}
+                </button>
+              </div>
+              <!-- 模型列表 -->
+              <div v-if="providerModels['siliconflow']?.length" class="mt-3 p-2 bg-muted/50 rounded">
+                <div class="text-xs font-medium text-foreground mb-1">可用模型 ({{ providerModels['siliconflow'].length }})</div>
+                <div class="flex flex-wrap gap-1">
+                  <span v-for="model in providerModels['siliconflow']" :key="model.id" class="px-1.5 py-0.5 bg-background rounded text-xs text-muted-foreground break-all">
+                    {{ model.id }}
+                  </span>
+                </div>
               </div>
             </div>
           </div>

@@ -143,14 +143,17 @@ const aspectRatios = [
   { value: "21:9", label: "21:9 超宽", width: 1344, height: 576, desc: "超宽屏/横幅" },
 ];
 
-// 动态模型列表（用于 Agnes 等需要从远端获取模型的提供商）
-const dynamicModels = ref<string[]>([]);
+// 动态模型列表（用于支持从远端获取模型的提供商）
+const dynamicModels = ref<Record<string, string[]>>({});
+
+// 支持动态获取模型的提供商列表
+const dynamicProviders = ['agnes', 'openai', 'siliconflow', 'openrouter', 'nvidia', 'gemini', 'modelscope'];
 
 // 计算属性：获取当前提供商的模型列表
 const currentModels = computed(() => {
-  // 对于 Agnes 提供商，使用动态获取的模型列表
-  if (store.provider === 'agnes' && dynamicModels.value.length > 0) {
-    return dynamicModels.value;
+  // 对于支持动态获取的提供商，使用动态获取的模型列表
+  if (dynamicProviders.includes(store.provider) && dynamicModels.value[store.provider]?.length > 0) {
+    return dynamicModels.value[store.provider];
   }
   // 其他提供商使用配置文件中的模型列表
   return store.models;
@@ -162,10 +165,15 @@ const selectedDimensions = computed(() => {
 
 // 加载提供商的模型列表
 async function loadProviderModels(provider: string) {
+  // 只加载支持动态获取的提供商
+  if (!dynamicProviders.includes(provider)) {
+    return;
+  }
+  
   try {
     const models = await getProviderModels(provider);
     if (models && models.length > 0) {
-      dynamicModels.value = models;
+      dynamicModels.value[provider] = models;
       // 如果当前模型不在列表中，选择第一个
       if (!models.includes(store.model)) {
         store.setModel(models[0]);
@@ -181,8 +189,8 @@ onMounted(async () => {
     const config = await loadConfig();
     store.setConfig(config);
     
-    // 加载 Agnes 的动态模型列表
-    await loadProviderModels('agnes');
+    // 加载当前提供商的动态模型列表
+    await loadProviderModels(store.provider);
     
     if (!store.model && currentModels.value.length > 0) {
       store.setModel(currentModels.value[0]);
@@ -404,9 +412,9 @@ function showBatchImageModal(imagePath: string) {
         @change="async (e) => {
           const newProvider = (e.target as HTMLSelectElement).value;
           store.setProvider(newProvider);
-          // 如果切换到 Agnes，重新加载模型列表
-          if (newProvider === 'agnes') {
-            await loadProviderModels('agnes');
+          // 如果切换到支持动态获取的提供商，加载模型列表
+          if (dynamicProviders.includes(newProvider)) {
+            await loadProviderModels(newProvider);
           }
         }"
         class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
