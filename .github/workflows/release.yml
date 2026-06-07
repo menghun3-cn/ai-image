@@ -36,11 +36,17 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: List directory structure
+        shell: pwsh
+        run: |
+          Get-Location
+          Get-ChildItem
+
       - name: Install dependencies (Windows)
         if: matrix.platform == 'windows-latest'
         shell: pwsh
         run: |
-          cd ai-image-v2
+          Set-Location $env:GITHUB_WORKSPACE\ai-image-v2
           npm install
 
       - name: Install Tauri CLI
@@ -50,7 +56,7 @@ jobs:
       - name: Build Tauri App
         shell: pwsh
         run: |
-          cd ai-image-v2
+          Set-Location $env:GITHUB_WORKSPACE\ai-image-v2
           npm run tauri build
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
