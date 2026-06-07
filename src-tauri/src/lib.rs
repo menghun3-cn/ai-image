@@ -4,6 +4,7 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
+pub mod agnes_models;
 pub mod commands;
 pub mod config;
 pub mod config_store;

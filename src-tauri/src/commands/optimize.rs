@@ -1,3 +1,4 @@
+use crate::agnes_models;
 use crate::config_store;
 use crate::types::OptimizeResult;
 use serde::{Deserialize, Serialize};
@@ -176,8 +177,11 @@ pub async fn optimize_prompt(prompt: String) -> Result<OptimizeResult, String> {
         });
     }
 
+    // 从拉取的模型列表中选择最佳文生文模型
+    let model = agnes_models::get_best_text_to_text_model();
+
     let request = ChatRequest {
-        model: "agnes-2.0-flash".to_string(),
+        model,
         messages: vec![
             Message {
                 role: "system".to_string(),

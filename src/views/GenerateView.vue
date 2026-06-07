@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, onUnmounted } from "vue";
 import { useGenerationStore } from "@/stores/generation";
-import { generateImage, batchGenerateImages, optimizePrompt, loadConfig, openOutputDir } from "@/lib/tauri";
+import { generateImage, batchGenerateImages, optimizePrompt, loadConfig, openOutputDir, getProviderModels } from "@/lib/tauri";
 import { message } from "@tauri-apps/plugin-dialog";
 import { Wand2Icon, Loader2Icon, FolderOpenIcon, SparklesIcon, Maximize2Icon, XIcon, ListIcon, HelpCircleIcon, CheckCircle2Icon } from "lucide-vue-next";
 import { listen } from "@tauri-apps/api/event";
@@ -143,16 +143,49 @@ const aspectRatios = [
   { value: "21:9", label: "21:9 超宽", width: 1344, height: 576, desc: "超宽屏/横幅" },
 ];
 
+// 动态模型列表（用于 Agnes 等需要从远端获取模型的提供商）
+const dynamicModels = ref<string[]>([]);
+
+// 计算属性：获取当前提供商的模型列表
+const currentModels = computed(() => {
+  // 对于 Agnes 提供商，使用动态获取的模型列表
+  if (store.provider === 'agnes' && dynamicModels.value.length > 0) {
+    return dynamicModels.value;
+  }
+  // 其他提供商使用配置文件中的模型列表
+  return store.models;
+});
+
 const selectedDimensions = computed(() => {
   return aspectRatios.find(r => r.value === store.aspectRatio) || aspectRatios[0];
 });
+
+// 加载提供商的模型列表
+async function loadProviderModels(provider: string) {
+  try {
+    const models = await getProviderModels(provider);
+    if (models && models.length > 0) {
+      dynamicModels.value = models;
+      // 如果当前模型不在列表中，选择第一个
+      if (!models.includes(store.model)) {
+        store.setModel(models[0]);
+      }
+    }
+  } catch (e) {
+    console.error(`[GenerateView] 加载 ${provider} 模型失败:`, e);
+  }
+}
 
 onMounted(async () => {
   try {
     const config = await loadConfig();
     store.setConfig(config);
-    if (!store.model && store.models.length > 0) {
-      store.setModel(store.models[0]);
+    
+    // 加载 Agnes 的动态模型列表
+    await loadProviderModels('agnes');
+    
+    if (!store.model && currentModels.value.length > 0) {
+      store.setModel(currentModels.value[0]);
     }
     
     // 恢复上一次成功生成的图片显示
@@ -368,7 +401,14 @@ function showBatchImageModal(imagePath: string) {
       <label class="block text-sm font-medium mb-2">提供商</label>
       <select
         v-model="store.provider"
-        @change="(e) => store.setProvider((e.target as HTMLSelectElement).value)"
+        @change="async (e) => {
+          const newProvider = (e.target as HTMLSelectElement).value;
+          store.setProvider(newProvider);
+          // 如果切换到 Agnes，重新加载模型列表
+          if (newProvider === 'agnes') {
+            await loadProviderModels('agnes');
+          }
+        }"
         class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
         :disabled="store.isGenerating || store.isBatchGenerating"
       >
@@ -399,7 +439,7 @@ function showBatchImageModal(imagePath: string) {
         class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
         :disabled="store.isGenerating || store.isBatchGenerating"
       >
-        <option v-for="m in store.models" :key="m" :value="m">
+        <option v-for="m in currentModels" :key="m" :value="m">
           {{ m }}
         </option>
       </select>

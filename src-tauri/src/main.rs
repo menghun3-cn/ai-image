@@ -2,7 +2,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use ai_image_v2_lib::commands;
-use ai_image_v2_lib::{config_store, log_message, setup_logging};
+use ai_image_v2_lib::{agnes_models, config_store, log_message, setup_logging};
 
 fn main() {
     setup_logging();
@@ -13,7 +13,7 @@ fn main() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
-        .setup(|_app| {
+        .setup(|app| {
             // 应用启动时初始化配置
             log_message("[Main] 初始化配置存储...");
             if let Err(e) = config_store::init_config_store() {
@@ -21,6 +21,31 @@ fn main() {
             } else {
                 log_message("[Main] 配置存储初始化成功");
             }
+
+            // 启动时异步拉取 Agnes 模型
+            let _app_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                log_message("[Main] 准备启动时拉取 Agnes 模型...");
+
+                // 加载配置获取 endpoint 和 api_key
+                match config_store::load_config_from_store() {
+                    Ok(config) => {
+                        let endpoint = if config.providers.agnes.endpoint.is_empty() {
+                            "https://apihub.agnes-ai.com/v1".to_string()
+                        } else {
+                            config.providers.agnes.endpoint.clone()
+                        };
+                        let api_key = config.providers.agnes.api_key.clone();
+
+                        // 异步拉取模型（失败不阻塞）
+                        agnes_models::try_fetch_on_startup(&endpoint, &api_key).await;
+                    }
+                    Err(e) => {
+                        log_message(&format!("[Main] 加载配置失败，跳过启动拉取: {}", e));
+                    }
+                }
+            });
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -35,6 +60,9 @@ fn main() {
             commands::get_provider_models,
             commands::generate_video,
             commands::get_video_output_dir,
+            commands::update_agnes_models,
+            commands::get_agnes_models,
+            commands::get_default_agnes_models,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,3 +1,4 @@
+use crate::agnes_models;
 use crate::config_store;
 use crate::AppConfig;
 
@@ -14,6 +15,18 @@ pub fn save_config(config: AppConfig) -> Result<(), String> {
 #[tauri::command]
 pub fn get_provider_models(provider: String) -> Result<Vec<String>, String> {
     let models = match provider.as_str() {
+        "agnes" => {
+            // 从拉取的模型列表中获取文生图模型
+            match agnes_models::load_agnes_models() {
+                Ok(store) if !store.text_to_image.is_empty() => {
+                    agnes_models::get_model_ids(&store.text_to_image)
+                }
+                _ => {
+                    // 如果没有拉取到模型，返回默认模型
+                    vec!["agnes-image-2.1-flash".to_string()]
+                }
+            }
+        }
         "modelscope" => vec!["Qwen/Qwen-Image".to_string()],
         "nvidia" => vec![
             "black-forest-labs/flux.2-klein-4b".to_string(),

@@ -1,3 +1,4 @@
+use crate::agnes_models;
 use crate::error::{ProviderError, Result};
 use crate::providers::ImageProvider;
 use crate::types::{
@@ -31,7 +32,10 @@ impl ImageProvider for AgnesProvider {
     }
 
     async fn generate(&self, options: &GenerationOptions) -> Result<GenerationResult> {
-        let model = options.model.as_deref().unwrap_or("agnes-image-2.1-flash");
+        // 优先使用用户指定的模型，如果没有则从拉取的模型列表中选择最佳模型
+        let model = options.model.clone().unwrap_or_else(|| {
+            agnes_models::get_best_text_to_image_model()
+        });
 
         let key_preview = if self.config.api_key.len() > 15 {
             format!("{}...", &self.config.api_key[..15])
@@ -210,7 +214,8 @@ impl AgnesProvider {
         options: &VideoGenerationOptions,
         app: &tauri::AppHandle,
     ) -> Result<VideoGenerationResult> {
-        let model = "agnes-video-v2.0";
+        // 从拉取的模型列表中选择最佳文生视频模型
+        let model = agnes_models::get_best_text_to_video_model();
 
         let key_preview = if self.config.api_key.len() > 15 {
             format!("{}...", &self.config.api_key[..15])

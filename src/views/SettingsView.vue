@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { ref, onMounted, watch, nextTick } from "vue";
-import { loadConfig, saveConfig } from "@/lib/tauri";
-import type { AppConfig } from "@/lib/tauri";
+import { loadConfig, saveConfig, updateAgnesModels, getAgnesModels } from "@/lib/tauri";
+import type { AppConfig, AgnesModelsStore } from "@/lib/tauri";
 import Dialog from "@/components/Dialog.vue";
-import { InfoIcon, SlidersIcon, KeyIcon, GlobeIcon, FolderIcon, EyeIcon, EyeOffIcon, ExternalLinkIcon } from "lucide-vue-next";
+import { InfoIcon, SlidersIcon, KeyIcon, GlobeIcon, FolderIcon, EyeIcon, EyeOffIcon, ExternalLinkIcon, RefreshCwIcon } from "lucide-vue-next";
 
 // 各平台获取 API Key 的链接
 const providerLinks: Record<string, string> = {
@@ -19,6 +19,11 @@ const providerLinks: Record<string, string> = {
 const config = ref<AppConfig | null>(null);
 const activeTab = ref(localStorage.getItem("lastSettingsTab") || "api");
 const saveError = ref<string | null>(null);
+
+// Agnes 模型状态
+const agnesModels = ref<AgnesModelsStore | null>(null);
+const isUpdatingModels = ref(false);
+const lastUpdateTime = ref<string>("");
 
 // 对话框状态
 const dialog = ref({
@@ -112,6 +117,8 @@ const tauriVersion = "2.10.3";
 onMounted(async () => {
   try {
     config.value = await loadConfig();
+    // 加载 Agnes 模型
+    await loadAgnesModels();
     // 标记加载完成
     isLoading = false;
   } catch (e) {
@@ -123,6 +130,71 @@ onMounted(async () => {
     });
   }
 });
+
+// 加载 Agnes 模型
+async function loadAgnesModels() {
+  try {
+    const models = await getAgnesModels();
+    agnesModels.value = models;
+    if (models.last_updated) {
+      const date = new Date(models.last_updated * 1000);
+      lastUpdateTime.value = date.toLocaleString();
+    }
+  } catch (e) {
+    console.error("加载 Agnes 模型失败:", e);
+  }
+}
+
+// 更新 Agnes 模型
+async function handleUpdateAgnesModels() {
+  if (!config.value) return;
+  
+  const apiKey = config.value.providers.agnes.api_key;
+  if (!apiKey) {
+    await showDialog({
+      title: "提示",
+      message: "请先配置 Agnes API Key",
+      type: "warning",
+    });
+    return;
+  }
+
+  isUpdatingModels.value = true;
+  try {
+    const endpoint = config.value.providers.agnes.endpoint || "https://apihub.agnes-ai.com/v1";
+    const result = await updateAgnesModels({
+      endpoint,
+      api_key: apiKey,
+    });
+    
+    if (result.success && result.data) {
+      agnesModels.value = result.data;
+      if (result.data.last_updated) {
+        const date = new Date(result.data.last_updated * 1000);
+        lastUpdateTime.value = date.toLocaleString();
+      }
+      await showDialog({
+        title: "成功",
+        message: result.message,
+        type: "success",
+      });
+    } else {
+      await showDialog({
+        title: "失败",
+        message: result.message,
+        type: "error",
+      });
+    }
+  } catch (e) {
+    await showDialog({
+      title: "错误",
+      message: "更新模型失败: " + String(e),
+      type: "error",
+    });
+  } finally {
+    isUpdatingModels.value = false;
+  }
+}
 
 async function resetToDefaults() {
   if (!config.value) return;
@@ -230,7 +302,54 @@ const tabs = [
                   <EyeOffIcon v-else class="w-4 h-4" />
                 </button>
               </div>
-              <p class="text-xs text-muted-foreground mt-1.5">免费使用，推荐首选</p>
+              <div class="flex items-center justify-between mt-3">
+                <p class="text-xs text-muted-foreground">免费使用，推荐首选</p>
+                <button
+                  type="button"
+                  @click="handleUpdateAgnesModels"
+                  :disabled="isUpdatingModels"
+                  class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  <RefreshCwIcon class="w-3 h-3" :class="{ 'animate-spin': isUpdatingModels }" />
+                  {{ isUpdatingModels ? '更新中...' : '更新模型' }}
+                </button>
+              </div>
+              <!-- 模型统计信息 -->
+              <div v-if="agnesModels && !agnesModels.text_to_image.length && !agnesModels.text_to_text.length && !agnesModels.text_to_video.length" class="mt-3 p-2 bg-muted/50 rounded text-xs text-muted-foreground">
+                暂无模型数据，点击"更新模型"拉取最新模型列表
+              </div>
+              <div v-else-if="agnesModels" class="mt-3 space-y-2">
+                <!-- 文生文模型 -->
+                <div v-if="agnesModels.text_to_text.length > 0" class="p-2 bg-muted/50 rounded">
+                  <div class="text-xs font-medium text-foreground mb-1">文生文模型 ({{ agnesModels.text_to_text.length }})</div>
+                  <div class="flex flex-wrap gap-1">
+                    <span v-for="model in agnesModels.text_to_text" :key="model.id" class="px-1.5 py-0.5 bg-background rounded text-xs text-muted-foreground break-all">
+                      {{ model.id }}
+                    </span>
+                  </div>
+                </div>
+                <!-- 文生图模型 -->
+                <div v-if="agnesModels.text_to_image.length > 0" class="p-2 bg-muted/50 rounded">
+                  <div class="text-xs font-medium text-foreground mb-1">文生图模型 ({{ agnesModels.text_to_image.length }})</div>
+                  <div class="flex flex-wrap gap-1">
+                    <span v-for="model in agnesModels.text_to_image" :key="model.id" class="px-1.5 py-0.5 bg-background rounded text-xs text-muted-foreground break-all">
+                      {{ model.id }}
+                    </span>
+                  </div>
+                </div>
+                <!-- 文生视频模型 -->
+                <div v-if="agnesModels.text_to_video.length > 0" class="p-2 bg-muted/50 rounded">
+                  <div class="text-xs font-medium text-foreground mb-1">文生视频模型 ({{ agnesModels.text_to_video.length }})</div>
+                  <div class="flex flex-wrap gap-1">
+                    <span v-for="model in agnesModels.text_to_video" :key="model.id" class="px-1.5 py-0.5 bg-background rounded text-xs text-muted-foreground break-all">
+                      {{ model.id }}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <p v-if="lastUpdateTime" class="text-xs text-muted-foreground mt-2">
+                最后更新: {{ lastUpdateTime }}
+              </p>
             </div>
 
             <div class="p-4 rounded-lg border bg-card">

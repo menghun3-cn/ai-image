@@ -172,3 +172,46 @@ export async function generateVideo(options: VideoGenerationOptions): Promise<Vi
 export async function getVideoOutputDir(): Promise<string> {
   return invoke<string>("get_video_output_dir");
 }
+
+// Agnes 模型管理相关
+export interface AgnesModel {
+  id: string;
+  name: string;
+  description: string;
+}
+
+export interface AgnesModels {
+  text_to_text: AgnesModel[];
+  text_to_image: AgnesModel[];
+  text_to_video: AgnesModel[];
+}
+
+export interface AgnesModelsStore {
+  text_to_text: AgnesModel[];
+  text_to_image: AgnesModel[];
+  text_to_video: AgnesModel[];
+  last_updated?: number;
+}
+
+export interface UpdateAgnesModelsRequest {
+  endpoint: string;
+  api_key: string;
+}
+
+export interface UpdateAgnesModelsResponse {
+  success: boolean;
+  message: string;
+  data?: AgnesModelsStore;
+}
+
+export async function updateAgnesModels(request: UpdateAgnesModelsRequest): Promise<UpdateAgnesModelsResponse> {
+  return invoke<UpdateAgnesModelsResponse>("update_agnes_models", { request });
+}
+
+export async function getAgnesModels(): Promise<AgnesModelsStore> {
+  return invoke<AgnesModelsStore>("get_agnes_models");
+}
+
+export async function getDefaultAgnesModels(): Promise<AgnesModelsStore> {
+  return invoke<AgnesModelsStore>("get_default_agnes_models");
+}
