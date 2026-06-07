@@ -63,6 +63,9 @@ fn main() {
             commands::update_agnes_models,
             commands::get_agnes_models,
             commands::get_default_agnes_models,
+            commands::get_videos,
+            commands::delete_video,
+            commands::open_video_dir,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

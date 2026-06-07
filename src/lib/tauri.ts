@@ -215,3 +215,22 @@ export async function getAgnesModels(): Promise<AgnesModelsStore> {
 export async function getDefaultAgnesModels(): Promise<AgnesModelsStore> {
   return invoke<AgnesModelsStore>("get_default_agnes_models");
 }
+
+// 视频库相关
+export interface VideoInfo {
+  path: string;
+  name: string;
+  time: number;
+}
+
+export async function getVideos(outputDir: string): Promise<VideoInfo[]> {
+  return invoke<VideoInfo[]>("get_videos", { outputDir });
+}
+
+export async function deleteVideo(path: string): Promise<void> {
+  return invoke("delete_video", { path });
+}
+
+export async function openVideoDir(path: string): Promise<void> {
+  return invoke("open_video_dir", { path });
+}

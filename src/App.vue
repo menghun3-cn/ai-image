@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ImageIcon, VideoIcon, SettingsIcon, Grid3X3Icon } from "lucide-vue-next";
+import { ImageIcon, VideoIcon, SettingsIcon, Grid3X3Icon, FilmIcon } from "lucide-vue-next";
 
 const router = useRouter();
 const route = useRoute();
@@ -47,6 +47,16 @@ function navigate(path: string) {
         title="图库"
       >
         <Grid3X3Icon class="w-5 h-5" />
+      </button>
+      <button
+        @click="navigate('/video-gallery')"
+        :class="[
+          'p-3 rounded-lg transition-colors',
+          currentRoute === '/video-gallery' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted',
+        ]"
+        title="视频库"
+      >
+        <FilmIcon class="w-5 h-5" />
       </button>
       <div class="flex-1"></div>
       <button
