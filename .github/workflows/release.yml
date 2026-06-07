@@ -23,6 +23,9 @@ jobs:
             args: ''
 
     runs-on: ${{ matrix.platform }}
+    defaults:
+      run:
+        working-directory: ./ai-image-v2
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -38,16 +41,13 @@ jobs:
 
       - name: Install dependencies (Windows)
         if: matrix.platform == 'windows-latest'
-        run: |
-          npm install
-        working-directory: ai-image-v2
+        run: npm install
 
       - name: Install Tauri CLI
         run: cargo install tauri-cli --version "^2.0.0"
 
       - name: Build Tauri App
         run: npm run tauri build
-        working-directory: ai-image-v2
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
