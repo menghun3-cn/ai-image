@@ -133,7 +133,7 @@ pub fn get_project_root() -> std::path::PathBuf {
     std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
 }
 
-/// 获取下一个图片文件名（按文件数量递增，与原项目对齐）
+/// 获取下一个图片文件名（使用时间戳命名）
 pub fn get_next_image_path(output_dir: &str) -> crate::error::Result<String> {
     use std::fs;
     use std::path::Path;
@@ -161,38 +161,23 @@ pub fn get_next_image_path(output_dir: &str) -> crate::error::Result<String> {
             .map_err(|e| crate::error::ProviderError::FileSystem(e))?;
     }
 
-    // 获取现有 png 文件数量（与原项目逻辑一致）
-    let existing_count = fs::read_dir(&full_output_path)
-        .map_err(|e| crate::error::ProviderError::FileSystem(e))?
-        .filter_map(|entry| {
-            let entry = entry.ok()?;
-            let name = entry.file_name().to_string_lossy().to_string();
-            if name.ends_with(".png") {
-                Some(())
-            } else {
-                None
-            }
-        })
-        .count();
-
-    // 下一个序号 = 现有文件数 + 1
-    let next_number = existing_count + 1;
-
+    // 生成时间戳文件名
+    let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
     let result_path = format!(
-        "{}\\{}.png",
+        "{}\\image_{}.png",
         full_output_path.to_string_lossy(),
-        next_number
+        timestamp
     );
     crate::log_message(&format!(
-        "[get_next_image_path] 现有文件数: {}, 下一个序号: {}, 结果路径: {}",
-        existing_count, next_number, result_path
+        "[get_next_image_path] 结果路径: {}",
+        result_path
     ));
 
     // 返回完整路径
     Ok(result_path)
 }
 
-/// 获取下一个视频文件名（按文件数量递增）
+/// 获取下一个视频文件名（使用时间戳命名）
 pub fn get_next_video_path(output_dir: &str) -> crate::error::Result<String> {
     use std::fs;
     use std::path::Path;
@@ -220,31 +205,16 @@ pub fn get_next_video_path(output_dir: &str) -> crate::error::Result<String> {
             .map_err(|e| crate::error::ProviderError::FileSystem(e))?;
     }
 
-    // 获取现有 mp4 文件数量
-    let existing_count = fs::read_dir(&full_output_path)
-        .map_err(|e| crate::error::ProviderError::FileSystem(e))?
-        .filter_map(|entry| {
-            let entry = entry.ok()?;
-            let name = entry.file_name().to_string_lossy().to_string();
-            if name.ends_with(".mp4") {
-                Some(())
-            } else {
-                None
-            }
-        })
-        .count();
-
-    // 下一个序号 = 现有文件数 + 1
-    let next_number = existing_count + 1;
-
+    // 生成时间戳文件名
+    let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
     let result_path = format!(
-        "{}\\{}.mp4",
+        "{}\\video_{}.mp4",
         full_output_path.to_string_lossy(),
-        next_number
+        timestamp
     );
     crate::log_message(&format!(
-        "[get_next_video_path] 现有文件数: {}, 下一个序号: {}, 结果路径: {}",
-        existing_count, next_number, result_path
+        "[get_next_video_path] 结果路径: {}",
+        result_path
     ));
 
     // 返回完整路径
