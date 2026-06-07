@@ -25,7 +25,7 @@ jobs:
     runs-on: ${{ matrix.platform }}
     defaults:
       run:
-        working-directory: ./ai-image-v2
+        working-directory: ai-image-v2
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
