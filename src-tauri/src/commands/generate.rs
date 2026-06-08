@@ -4,6 +4,18 @@ use crate::types::{GenerationOptions, GenerationResult};
 
 #[tauri::command]
 pub async fn generate_image(options: GenerationOptions) -> Result<GenerationResult, String> {
+    crate::log_message(&format!(
+        "[debug-point command-generate-image] provider={}, model={:?}, has_image={}, image_len={}, image_prefix={}",
+        options.provider,
+        options.model,
+        options.image.is_some(),
+        options.image.as_ref().map(|v| v.len()).unwrap_or(0),
+        options
+            .image
+            .as_ref()
+            .map(|v| v.chars().take(30).collect::<String>())
+            .unwrap_or_else(|| "null".to_string())
+    ));
     let config = config_store::load_config_from_store().map_err(|e| e.to_string())?;
 
     let provider_config = match options.provider.as_str() {

@@ -42,12 +42,20 @@ impl ImageProvider for OpenAiProvider {
             "1024x1024".to_string()
         };
 
-        let request_body = serde_json::json!({
+        let mut request_body = serde_json::json!({
             "model": model,
             "prompt": &options.prompt,
             "n": 1,
             "size": size,
         });
+
+        // 处理以图生图（gpt-image-1 模型支持）
+        if let Some(image_data) = &options.image {
+            crate::log_message(&format!("[OpenAI] 以图生图模式，处理参考图片"));
+            // OpenAI 使用 image 参数传递 base64 图片
+            request_body["image"] = serde_json::json!(image_data);
+            crate::log_message(&format!("[OpenAI] 参考图片已添加到请求"));
+        }
 
         crate::log_message(&format!(
             "[OpenAI] 请求接口: POST https://api.openai.com/v1/images/generations"

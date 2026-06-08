@@ -2,6 +2,14 @@ import { invoke } from "@tauri-apps/api/core";
 
 export type GenerationStatus = "idle" | "generating" | "success" | "error";
 
+// 参考图片类型
+export interface ReferenceImage {
+  id: string;
+  type: "file" | "url";
+  source: string;
+  preview: string;
+}
+
 export interface GenerationOptions {
   prompt: string;
   provider: string;
@@ -12,6 +20,7 @@ export interface GenerationOptions {
   steps?: number;
   guidance_scale?: number;
   seed?: number;
+  image?: string; // Base64 编码的参考图片
 }
 
 export interface GenerationResult {

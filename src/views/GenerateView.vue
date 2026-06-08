@@ -1,13 +1,17 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, onUnmounted } from "vue";
 import { useGenerationStore } from "@/stores/generation";
-import { generateImage, batchGenerateImages, optimizePrompt, loadConfig, openOutputDir, getProviderModels } from "@/lib/tauri";
+import { generateImage, batchGenerateImages, optimizePrompt, loadConfig, openOutputDir, getProviderModels, type ReferenceImage } from "@/lib/tauri";
 import { message } from "@tauri-apps/plugin-dialog";
 import { Wand2Icon, Loader2Icon, FolderOpenIcon, SparklesIcon, Maximize2Icon, XIcon, ListIcon, HelpCircleIcon, CheckCircle2Icon } from "lucide-vue-next";
 import { listen } from "@tauri-apps/api/event";
 import { readFile } from "@tauri-apps/plugin-fs";
+import ImageInput from "@/components/ImageInput.vue";
 
 const store = useGenerationStore();
+
+// 参考图片列表
+const referenceImages = ref<ReferenceImage[]>([]);
 
 // 图片 URL 缓存
 const imageUrlCache = ref<string | null>(null);
@@ -221,6 +225,42 @@ async function handleGenerate() {
   startProgressTimer();
 
   try {
+    // 准备参考图片（取第一张）
+    let imageBase64: string | undefined;
+    if (referenceImages.value.length > 0) {
+      const refImage = referenceImages.value[0];
+      console.log("[debug-point frontend-ref-image]", {
+        count: referenceImages.value.length,
+        type: refImage.type,
+        source: refImage.source,
+        previewPrefix: refImage.preview?.slice(0, 30),
+        previewLength: refImage.preview?.length || 0,
+      });
+      if (refImage.type === "file") {
+        // 本地文件需要读取并转换为 base64（去掉 data URI 前缀）
+        try {
+          const data = await readFile(refImage.source);
+          const ext = refImage.source.split('.').pop()?.toLowerCase() || 'png';
+          const mimeType = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' :
+                           ext === 'webp' ? 'image/webp' : 'image/png';
+          imageBase64 = `data:${mimeType};base64,${arrayBufferToBase64(data)}`;
+        } catch (e) {
+          console.error("读取参考图片失败:", e);
+        }
+      } else {
+        // URL 类型直接使用
+        imageBase64 = refImage.preview;
+      }
+    }
+
+    console.log("[debug-point frontend-generate-payload]", {
+      provider: store.provider,
+      model: store.model || undefined,
+      hasImage: Boolean(imageBase64),
+      imageLength: imageBase64?.length || 0,
+      imagePrefix: imageBase64?.slice(0, 30) || null,
+    });
+
     const result = await generateImage({
       prompt: prompt.value,
       provider: store.provider,
@@ -228,6 +268,7 @@ async function handleGenerate() {
       output_dir: store.outputDir,
       width: selectedDimensions.value.width,
       height: selectedDimensions.value.height,
+      image: imageBase64,
     });
 
     stopProgressTimer();
@@ -363,6 +404,17 @@ function showBatchImageModal(imagePath: string) {
           <Wand2Icon class="w-4 h-4" :class="{ 'animate-spin': isOptimizing }" />
           <span class="text-xs">优化</span>
         </button>
+      </div>
+
+      <!-- 参考图片输入 -->
+      <div class="mt-3">
+        <label class="block text-xs font-medium text-muted-foreground mb-2">
+          参考图片（可选，用于以图生图）
+        </label>
+        <ImageInput
+          v-model="referenceImages"
+          :disabled="store.isGenerating"
+        />
       </div>
     </div>
 

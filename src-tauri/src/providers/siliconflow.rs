@@ -55,6 +55,14 @@ impl ImageProvider for SiliconFlowProvider {
             request_body["guidance_scale"] = serde_json::json!(guidance_scale);
         }
 
+        // 处理以图生图
+        if let Some(image_data) = &options.image {
+            crate::log_message(&format!("[SiliconFlow] 以图生图模式，处理参考图片"));
+            // SiliconFlow 使用 image 参数传递 base64 图片
+            request_body["image"] = serde_json::json!(image_data);
+            crate::log_message(&format!("[SiliconFlow] 参考图片已添加到请求"));
+        }
+
         crate::log_message(&format!(
             "[SiliconFlow] 请求接口: POST https://api.siliconflow.cn/v1/images/generations"
         ));

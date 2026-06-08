@@ -82,6 +82,7 @@ pub async fn batch_generate_images(
             steps: None,
             guidance_scale: None,
             seed: None,
+            image: None, // 批量生成暂不支持以图生图
         };
 
         // 重试机制

@@ -117,10 +117,33 @@ impl ImageProvider for NvidiaProvider {
             }
         } else if is_kontext {
             // flux.1-kontext-dev: 图生图，需要 image 参数
-            // 暂时不支持，返回错误
-            return Err(ProviderError::InvalidResponse(
-                "flux.1-kontext-dev 模型需要输入图片，当前仅支持文生图".to_string(),
-            ));
+            let cfg_scale = options
+                .guidance_scale
+                .map(|v| v.clamp(1.0, 10.0))
+                .unwrap_or(3.5);
+            let steps = options.steps.map(|v| v.clamp(1, 50)).unwrap_or(30);
+            
+            // 获取图片数据
+            let image_data = options.image.as_deref().unwrap_or("");
+            if image_data.is_empty() {
+                return Err(ProviderError::InvalidResponse(
+                    "flux.1-kontext-dev 模型需要输入图片，请添加参考图片".to_string(),
+                ));
+            }
+            
+            // 提取纯 base64 数据（去掉 data URI 前缀）
+            let base64_data = if image_data.starts_with("data:image/") {
+                image_data.split(',').last().unwrap_or(image_data)
+            } else {
+                image_data
+            };
+            
+            serde_json::json!({
+                "prompt": &options.prompt,
+                "image": base64_data,
+                "cfg_scale": cfg_scale,
+                "steps": steps,
+            })
         } else {
             // 默认使用 width/height 格式
             let width = if options.width > 0 {

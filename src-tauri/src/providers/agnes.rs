@@ -49,12 +49,41 @@ impl ImageProvider for AgnesProvider {
             "1024x1024".to_string()
         };
 
-        let request_body = serde_json::json!({
+        // 构建请求体
+        let mut request_body = serde_json::json!({
             "model": model,
             "prompt": &options.prompt,
             "n": 1,
             "size": size,
         });
+
+        // 处理以图生图
+        if let Some(image_data) = &options.image {
+            crate::log_message(&format!(
+                "[debug-point agnes-provider-input] has_image=true, image_len={}, image_prefix={}",
+                image_data.len(),
+                image_data.chars().take(30).collect::<String>()
+            ));
+            crate::log_message(&format!("[Agnes] 以图生图模式，处理参考图片"));
+            match self.process_image_input(image_data).await {
+                Ok((_, base64_data)) => {
+                    // 使用纯 base64 数据
+                    request_body["image"] = serde_json::json!(base64_data);
+                    crate::log_message(&format!(
+                        "[debug-point agnes-provider-request] request_has_image=true, base64_len={}, base64_prefix={}",
+                        base64_data.len(),
+                        base64_data.chars().take(30).collect::<String>()
+                    ));
+                    crate::log_message(&format!("[Agnes] 参考图片处理成功"));
+                }
+                Err(e) => {
+                    crate::log_message(&format!("[Agnes] 参考图片处理失败: {}", e));
+                    return Err(e);
+                }
+            }
+        } else {
+            crate::log_message("[debug-point agnes-provider-input] has_image=false, image_len=0, image_prefix=null");
+        }
 
         let endpoint = if self.config.endpoint.is_empty() {
             "https://apihub.agnes-ai.com/v1/images/generations".to_string()

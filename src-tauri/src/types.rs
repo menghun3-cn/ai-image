@@ -11,6 +11,8 @@ pub struct GenerationOptions {
     pub steps: Option<u32>,
     pub guidance_scale: Option<f64>,
     pub seed: Option<u64>,
+    /// 参考图片（以图生图），支持 base64 编码或 URL
+    pub image: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
