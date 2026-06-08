@@ -80,6 +80,8 @@ jobs:
           args: ${{ matrix.args }}
           includeDebug: false
           includeRelease: true
+          # 禁用自动发布，我们手动控制 release 创建
+          createRelease: false
 
       - name: Get version
         id: get_version
