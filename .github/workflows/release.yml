@@ -85,12 +85,13 @@ jobs:
       - name: Generate latest.json for updater
         shell: pwsh
         run: |
+          Set-Location $env:PROJECT_DIR
           $version = '${{ steps.get_version.outputs.version }}'
           $versionNumber = '${{ steps.get_version.outputs.version_number }}'
           $date = Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ"
           
           # 获取 NSIS 安装包的文件名
-          $nsisPath = Get-ChildItem -Path "ai-image-v2/src-tauri/target/release/bundle/nsis/*.exe" | Select-Object -First 1
+          $nsisPath = Get-ChildItem -Path "src-tauri/target/release/bundle/nsis/*.exe" | Select-Object -First 1
           $nsisFileName = $nsisPath.Name
           
           # 计算 NSIS 安装包的签名（如果没有签名密钥，使用空字符串）
@@ -114,9 +115,9 @@ jobs:
             }
           } | ConvertTo-Json -Depth 10
           
-          $json | Out-File -FilePath "latest.json" -Encoding UTF8
+          $json | Out-File -FilePath "$env:PROJECT_DIR/latest.json" -Encoding UTF8
           Write-Output "Generated latest.json:"
-          Get-Content "latest.json"
+          Get-Content "$env:PROJECT_DIR/latest.json"
 
       - name: Upload artifacts to Release
         uses: softprops/action-gh-release@v1
@@ -143,9 +144,9 @@ jobs:
 
             详细说明请参考 [发布说明](../../blob/main/ai-image-v2-docs/08-发布说明.md)
           files: |
-            ai-image-v2/src-tauri/target/release/bundle/nsis/*.exe
-            ai-image-v2/src-tauri/target/release/bundle/msi/*.msi
-            latest.json
+            ${{ env.PROJECT_DIR }}/src-tauri/target/release/bundle/nsis/*.exe
+            ${{ env.PROJECT_DIR }}/src-tauri/target/release/bundle/msi/*.msi
+            ${{ env.PROJECT_DIR }}/latest.json
           draft: false
           prerelease: false
         env:
