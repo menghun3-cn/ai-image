@@ -119,6 +119,43 @@ jobs:
           Write-Output "Generated latest.json:"
           Get-Content "$env:PROJECT_DIR/latest.json"
 
+      - name: Prepare artifacts for upload
+        shell: pwsh
+        run: |
+          Set-Location $env:PROJECT_DIR
+          $artifactsDir = "${env:GITHUB_WORKSPACE}\artifacts"
+          New-Item -ItemType Directory -Force -Path $artifactsDir
+          
+          # 复制 NSIS 安装包
+          $nsisFiles = Get-ChildItem -Path "src-tauri/target/release/bundle/nsis/*.exe" -ErrorAction SilentlyContinue
+          if ($nsisFiles) {
+            Copy-Item -Path $nsisFiles.FullName -Destination $artifactsDir
+            Write-Output "Copied NSIS installer: $($nsisFiles.Name)"
+          } else {
+            Write-Output "Warning: No NSIS installer found"
+          }
+          
+          # 复制 MSI 安装包
+          $msiFiles = Get-ChildItem -Path "src-tauri/target/release/bundle/msi/*.msi" -ErrorAction SilentlyContinue
+          if ($msiFiles) {
+            Copy-Item -Path $msiFiles.FullName -Destination $artifactsDir
+            Write-Output "Copied MSI installer: $($msiFiles.Name)"
+          } else {
+            Write-Output "Warning: No MSI installer found"
+          }
+          
+          # 复制 latest.json
+          if (Test-Path "latest.json") {
+            Copy-Item -Path "latest.json" -Destination $artifactsDir
+            Write-Output "Copied latest.json"
+          } else {
+            Write-Output "Warning: latest.json not found"
+          }
+          
+          # 列出 artifacts 目录内容
+          Write-Output "Artifacts directory contents:"
+          Get-ChildItem -Path $artifactsDir
+
       - name: Upload artifacts to Release
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
@@ -144,9 +181,9 @@ jobs:
 
             详细说明请参考 [发布说明](../../blob/main/ai-image-v2-docs/08-发布说明.md)
           files: |
-            ${{ env.PROJECT_DIR }}/src-tauri/target/release/bundle/nsis/*.exe
-            ${{ env.PROJECT_DIR }}/src-tauri/target/release/bundle/msi/*.msi
-            ${{ env.PROJECT_DIR }}/latest.json
+            ${{ github.workspace }}/artifacts/*.exe
+            ${{ github.workspace }}/artifacts/*.msi
+            ${{ github.workspace }}/artifacts/latest.json
           draft: false
           prerelease: false
         env:
