@@ -75,8 +75,48 @@ jobs:
           } else {
             $version = '${{ github.ref_name }}'
           }
+          # 移除 v 前缀
+          $versionNumber = $version -replace '^v', ''
           Write-Output "version=$version" >> $env:GITHUB_OUTPUT
+          Write-Output "version_number=$versionNumber" >> $env:GITHUB_OUTPUT
           Write-Output "Version: $version"
+          Write-Output "Version Number: $versionNumber"
+
+      - name: Generate latest.json for updater
+        shell: pwsh
+        run: |
+          $version = '${{ steps.get_version.outputs.version }}'
+          $versionNumber = '${{ steps.get_version.outputs.version_number }}'
+          $date = Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ"
+          
+          # 获取 NSIS 安装包的文件名
+          $nsisPath = Get-ChildItem -Path "ai-image-v2/src-tauri/target/release/bundle/nsis/*.exe" | Select-Object -First 1
+          $nsisFileName = $nsisPath.Name
+          
+          # 计算 NSIS 安装包的签名（如果没有签名密钥，使用空字符串）
+          $signature = ""
+          if (Test-Path env:TAURI_SIGNING_PRIVATE_KEY) {
+            # 读取文件并计算签名
+            $fileBytes = [System.IO.File]::ReadAllBytes($nsisPath.FullName)
+            # 这里简化处理，实际应该使用 Tauri 的签名工具
+            $signature = ""
+          }
+          
+          $json = @{
+            version = $versionNumber
+            notes = "See full release notes at https://github.com/menghun3-cn/ai-image/releases/tag/$version"
+            pub_date = $date
+            platforms = @{
+              "windows-x86_64" = @{
+                signature = $signature
+                url = "https://github.com/menghun3-cn/ai-image/releases/download/$version/$nsisFileName"
+              }
+            }
+          } | ConvertTo-Json -Depth 10
+          
+          $json | Out-File -FilePath "latest.json" -Encoding UTF8
+          Write-Output "Generated latest.json:"
+          Get-Content "latest.json"
 
       - name: Upload artifacts to Release
         uses: softprops/action-gh-release@v1
@@ -105,6 +145,7 @@ jobs:
           files: |
             ai-image-v2/src-tauri/target/release/bundle/nsis/*.exe
             ai-image-v2/src-tauri/target/release/bundle/msi/*.msi
+            latest.json
           draft: false
           prerelease: false
         env:

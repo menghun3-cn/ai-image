@@ -13,6 +13,7 @@ fn main() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             // 应用启动时初始化配置
             log_message("[Main] 初始化配置存储...");
@@ -67,6 +68,9 @@ fn main() {
             commands::delete_video,
             commands::open_video_dir,
             commands::fetch_provider_models,
+            commands::check_update,
+            commands::download_and_install_update,
+            commands::get_app_version,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
