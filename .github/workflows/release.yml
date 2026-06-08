@@ -154,10 +154,16 @@ jobs:
           }
           
           # 复制 MSI 安装包
-          $msiFile = Get-ChildItem -Path "./src-tauri/target/release/bundle/msi/*.msi" | Select-Object -First 1
-          if ($msiFile) {
-            Copy-Item -Path $msiFile.FullName -Destination "$releaseDir/"
-            Write-Output "Copied MSI: $($msiFile.Name)"
+          if (Test-Path "./src-tauri/target/release/bundle/msi") {
+            $msiFile = Get-ChildItem -Path "./src-tauri/target/release/bundle/msi/*.msi" -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($msiFile) {
+              Copy-Item -Path $msiFile.FullName -Destination "$releaseDir/"
+              Write-Output "Copied MSI: $($msiFile.Name)"
+            } else {
+              Write-Output "No MSI file found"
+            }
+          } else {
+            Write-Output "MSI directory does not exist, skipping MSI"
           }
           
           # 复制 latest.json
