@@ -13,7 +13,7 @@ fn main() {
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             // 当检测到已有实例运行时，显示已运行的窗口
             log_message("检测到已有实例运行，显示已存在的窗口");
-            if let Some(window) = app.get_webview_window("main") {
+            if let Some(window) = app.get_window("main") {
                 let _ = window.set_focus();
                 let _ = window.unminimize();
                 let _ = window.show();
