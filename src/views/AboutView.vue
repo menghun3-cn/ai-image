@@ -97,8 +97,8 @@ onMounted(() => {
 <template>
   <div class="p-6 max-w-2xl mx-auto">
     <div class="flex items-center gap-3 mb-6">
-      <div class="w-16 h-16 bg-primary rounded-xl flex items-center justify-center">
-        <img src="/tauri.svg" alt="Logo" class="w-10 h-10" />
+      <div class="w-16 h-16 bg-primary rounded-xl flex items-center justify-center text-primary-foreground text-2xl font-bold">
+        AI
       </div>
       <div>
         <h1 class="text-2xl font-bold">AI Image V2</h1>
