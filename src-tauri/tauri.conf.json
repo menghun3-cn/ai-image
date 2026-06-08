@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "AI-Image",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "identifier": "com.ai-image.app",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -55,7 +55,7 @@
         "https://github.com/menghun3-cn/ai-image/releases/latest/download/latest.json"
       ],
       "dialog": false,
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDk2NDRCMDY0NDY5M0YyMjcKUldRSE1lTGtMa0x2WEd3Z2U3WnJ5ZHA0WWh5Q2JtRE9rY2tNYXV3Z1V2ZzF2eTl0aG1tZ3V3a0IK"
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDc3NUZCQUFGRDE1QUZENkYKUldSdi9WclJyN3BmZC9TNjk2YWd2YXhHdFBoWVJSZmQrZTV4cjhQRzVoNXZlM1pWTW9nVWUwcEEK"
     }
   }
 }
