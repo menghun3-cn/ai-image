@@ -78,6 +78,19 @@ pub fn log_message(message: &str) {
     }
 }
 
+/// 获取日志目录路径
+pub fn get_log_dir() -> std::path::PathBuf {
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(parent) = exe.parent() {
+            parent.join("logs")
+        } else {
+            std::path::PathBuf::from("logs")
+        }
+    } else {
+        std::path::PathBuf::from("logs")
+    }
+}
+
 /// 获取项目根目录
 /// 优先查找包含 .env.example 的目录（项目根目录）
 /// 其次查找包含 .env 的目录

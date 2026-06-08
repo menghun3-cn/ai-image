@@ -112,13 +112,26 @@ jobs:
           }
           $nsisFileName = $nsisPath.Name
           
-          # 计算 NSIS 安装包的签名（如果没有签名密钥，使用空字符串）
+          # 尝试使用 Tauri 签名工具生成签名
           $signature = ""
-          if (Test-Path env:TAURI_SIGNING_PRIVATE_KEY) {
-            # 读取文件并计算签名
-            $fileBytes = [System.IO.File]::ReadAllBytes($nsisPath.FullName)
-            # 这里简化处理，实际应该使用 Tauri 的签名工具
-            $signature = ""
+          $privateKey = $env:TAURI_SIGNING_PRIVATE_KEY
+          if ($privateKey) {
+            Write-Output "Signing installer with Tauri..."
+            try {
+              # 使用 Tauri CLI 签名
+              $sigOutput = & cargo tauri signer sign --private-key "$privateKey" --password "$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD" --file "$($nsisPath.FullName)" 2>&1
+              if ($LASTEXITCODE -eq 0) {
+                $sigFile = "$($nsisPath.FullName).sig"
+                if (Test-Path $sigFile) {
+                  $signature = Get-Content $sigFile -Raw
+                  Write-Output "Signature generated successfully"
+                }
+              }
+            } catch {
+              Write-Warning "Failed to sign installer: $_"
+            }
+          } else {
+            Write-Warning "No signing key found, generating unsigned latest.json"
           }
           
           $json = @{

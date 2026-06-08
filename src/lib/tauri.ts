@@ -273,3 +273,24 @@ export async function fetchProviderModels(
 export async function pickFolder(defaultPath?: string): Promise<string | null> {
   return invoke<string | null>("pick_folder", { defaultPath });
 }
+
+// 默认存储路径
+export interface DefaultStoragePaths {
+  image_dir: string;
+  video_dir: string;
+  data_dir: string;
+}
+
+export async function getDefaultStoragePaths(): Promise<DefaultStoragePaths> {
+  return invoke<DefaultStoragePaths>("get_default_storage_paths");
+}
+
+// 打开日志目录
+export async function openLogDir(): Promise<void> {
+  return invoke("open_log_dir");
+}
+
+// 获取日志内容
+export async function getLogContent(): Promise<string> {
+  return invoke<string>("get_log_content");
+}

@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref, onMounted, watch, nextTick } from "vue";
-import { loadConfig, saveConfig, updateAgnesModels, getAgnesModels, fetchProviderModels, pickFolder } from "@/lib/tauri";
-import type { AppConfig, AgnesModelsStore, ProviderModel } from "@/lib/tauri";
+import { ref, onMounted, watch, nextTick, computed } from "vue";
+import { loadConfig, saveConfig, updateAgnesModels, getAgnesModels, fetchProviderModels, pickFolder, getDefaultStoragePaths } from "@/lib/tauri";
+import type { AppConfig, AgnesModelsStore, ProviderModel, DefaultStoragePaths } from "@/lib/tauri";
 import Dialog from "@/components/Dialog.vue";
 import { InfoIcon, SlidersIcon, KeyIcon, GlobeIcon, FolderIcon, EyeIcon, EyeOffIcon, ExternalLinkIcon, RefreshCwIcon, FolderOpenIcon } from "lucide-vue-next";
 
@@ -19,6 +19,29 @@ const providerLinks: Record<string, string> = {
 const config = ref<AppConfig | null>(null);
 const activeTab = ref(localStorage.getItem("lastSettingsTab") || "api");
 const saveError = ref<string | null>(null);
+
+// 默认存储路径
+const defaultStoragePaths = ref<DefaultStoragePaths | null>(null);
+
+// 计算属性：显示图片输出目录的完整路径提示
+const imageOutputDirHint = computed(() => {
+  if (!config.value) return "";
+  // 如果路径是相对路径或默认路径，显示完整路径
+  if (config.value.default_output_dir === defaultStoragePaths.value?.image_dir) {
+    return `默认路径: ${defaultStoragePaths.value?.image_dir}`;
+  }
+  return `当前路径: ${config.value.default_output_dir}`;
+});
+
+// 计算属性：显示视频输出目录的完整路径提示
+const videoOutputDirHint = computed(() => {
+  if (!config.value) return "";
+  // 如果路径是相对路径或默认路径，显示完整路径
+  if (config.value.default_video_output_dir === defaultStoragePaths.value?.video_dir) {
+    return `默认路径: ${defaultStoragePaths.value?.video_dir}`;
+  }
+  return `当前路径: ${config.value.default_video_output_dir}`;
+});
 
 // Agnes 模型状态
 const agnesModels = ref<AgnesModelsStore | null>(null);
@@ -121,6 +144,8 @@ const tauriVersion = "2.10.3";
 onMounted(async () => {
   try {
     config.value = await loadConfig();
+    // 加载默认存储路径
+    defaultStoragePaths.value = await getDefaultStoragePaths();
     // 加载 Agnes 模型
     await loadAgnesModels();
     // 标记加载完成
@@ -933,6 +958,7 @@ const tabs = [
                   浏览
                 </button>
               </div>
+              <p class="mt-2 text-xs text-muted-foreground break-all">{{ imageOutputDirHint }}</p>
             </div>
 
             <div class="p-4 rounded-lg border bg-card">
@@ -953,6 +979,7 @@ const tabs = [
                   浏览
                 </button>
               </div>
+              <p class="mt-2 text-xs text-muted-foreground break-all">{{ videoOutputDirHint }}</p>
             </div>
 
             <div class="p-4 rounded-lg border bg-card">

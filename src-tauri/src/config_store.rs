@@ -15,6 +15,36 @@ pub fn get_config_dir() -> anyhow::Result<PathBuf> {
     Ok(config_dir)
 }
 
+/// 获取默认数据存储目录
+/// Windows: %USERPROFILE%/.ai-image/data
+/// Linux/macOS: ~/.ai-image/data
+pub fn get_default_data_dir() -> anyhow::Result<PathBuf> {
+    let home_dir = dirs::home_dir().ok_or_else(|| anyhow::anyhow!("无法获取用户主目录"))?;
+    let data_dir = home_dir.join(CONFIG_DIR_NAME).join("data");
+    std::fs::create_dir_all(&data_dir)?;
+    Ok(data_dir)
+}
+
+/// 获取默认图片输出目录
+/// Windows: %USERPROFILE%/.ai-image/data/image
+/// Linux/macOS: ~/.ai-image/data/image
+pub fn get_default_image_output_dir() -> anyhow::Result<PathBuf> {
+    let data_dir = get_default_data_dir()?;
+    let image_dir = data_dir.join("image");
+    std::fs::create_dir_all(&image_dir)?;
+    Ok(image_dir)
+}
+
+/// 获取默认视频输出目录
+/// Windows: %USERPROFILE%/.ai-image/data/video
+/// Linux/macOS: ~/.ai-image/data/video
+pub fn get_default_video_output_dir() -> anyhow::Result<PathBuf> {
+    let data_dir = get_default_data_dir()?;
+    let video_dir = data_dir.join("video");
+    std::fs::create_dir_all(&video_dir)?;
+    Ok(video_dir)
+}
+
 /// 获取配置文件路径
 pub fn get_config_path() -> anyhow::Result<PathBuf> {
     Ok(get_config_dir()?.join(CONFIG_FILE_NAME))
@@ -192,6 +222,15 @@ fn setup_proxy(config: &AppConfig) {
 
 /// 默认配置
 fn default_config() -> AppConfig {
+    // 获取默认图片和视频输出目录
+    let default_image_dir = get_default_image_output_dir()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| "images".to_string());
+    
+    let default_video_dir = get_default_video_output_dir()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| "video".to_string());
+
     AppConfig {
         providers: ProvidersConfig {
             modelscope: ProviderConfig {
@@ -224,8 +263,8 @@ fn default_config() -> AppConfig {
             },
         },
         default_provider: "agnes".to_string(),
-        default_output_dir: "images".to_string(),
-        default_video_output_dir: "video".to_string(),
+        default_output_dir: default_image_dir,
+        default_video_output_dir: default_video_dir,
         default_width: 768,
         default_height: 1344,
         default_steps: Some(30),

@@ -72,6 +72,9 @@ fn main() {
             commands::download_and_install_update,
             commands::get_app_version,
             commands::pick_folder,
+            commands::get_default_storage_paths,
+            commands::open_log_dir,
+            commands::get_log_content,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
