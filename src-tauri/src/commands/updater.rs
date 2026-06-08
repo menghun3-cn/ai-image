@@ -80,8 +80,8 @@ pub async fn download_and_install_update(app: AppHandle) -> Result<(), String> {
 
             // 下载并安装更新
             update
-                .download_and_install(|chunk, content_length| {
-                    let downloaded = chunk.len() as u64;
+                .download_and_install(|chunk_length, content_length| {
+                    let downloaded = chunk_length as u64;
                     let total = content_length.unwrap_or(0);
                     let percent = if total > 0 {
                         (downloaded as f64 / total as f64 * 100.0) as u64
