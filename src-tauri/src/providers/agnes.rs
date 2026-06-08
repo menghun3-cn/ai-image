@@ -170,15 +170,28 @@ impl ImageProvider for AgnesProvider {
 impl AgnesProvider {
     /// 将图片路径或URL转换为 Base64 或保持URL
     /// 支持：本地文件路径、http/https URL、data URL
-    async fn process_image_input(&self, image_input: &str) -> Result<String> {
-        // 如果已经是 data URL，直接返回
+    /// 返回: (完整data URI, 纯base64数据)
+    async fn process_image_input(&self, image_input: &str) -> Result<(String, String)> {
+        // 如果已经是 data URL，解析出 base64 部分
         if image_input.starts_with("data:image/") {
-            return Ok(image_input.to_string());
+            let size = image_input.len();
+            crate::log_message(&format!(
+                "[Agnes Video] 使用已有 base64 图片数据, 大小: {} bytes ({:.2} MB)",
+                size,
+                size as f64 / 1024.0 / 1024.0
+            ));
+            // 提取 base64 部分（去掉 data:image/xxx;base64, 前缀）
+            let base64_part = image_input.split(',').last().unwrap_or(image_input).to_string();
+            return Ok((image_input.to_string(), base64_part));
         }
 
         // 如果是 http/https URL，直接返回
         if image_input.starts_with("http://") || image_input.starts_with("https://") {
-            return Ok(image_input.to_string());
+            crate::log_message(&format!(
+                "[Agnes Video] 使用图片 URL: {}",
+                &image_input[..image_input.len().min(100)]
+            ));
+            return Ok((image_input.to_string(), image_input.to_string()));
         }
 
         // 本地文件路径，读取并转为 Base64
@@ -194,6 +207,14 @@ impl AgnesProvider {
             .await
             .map_err(|e| ProviderError::FileSystem(e))?;
 
+        let file_size = image_data.len();
+        crate::log_message(&format!(
+            "[Agnes Video] 读取本地图片: {}, 原始大小: {} bytes ({:.2} MB)",
+            image_input,
+            file_size,
+            file_size as f64 / 1024.0 / 1024.0
+        ));
+
         // 检测图片类型
         let mime_type = match path.extension().and_then(|e| e.to_str()) {
             Some("png") => "image/png",
@@ -206,7 +227,38 @@ impl AgnesProvider {
         let base64_data =
             base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &image_data);
 
-        Ok(format!("data:{};base64,{}", mime_type, base64_data))
+        let base64_size = base64_data.len();
+        
+        // 验证 base64 数据完整性
+        let padding_count = base64_data.chars().filter(|&c| c == '=').count();
+        let last_chars: String = base64_data.chars().rev().take(10).collect::<String>().chars().rev().collect();
+        
+        crate::log_message(&format!(
+            "[Agnes Video] 图片转 base64 完成, base64 大小: {} bytes ({:.2} MB), 填充字符(=)数量: {}, 结尾10字符: {}",
+            base64_size,
+            base64_size as f64 / 1024.0 / 1024.0,
+            padding_count,
+            last_chars
+        ));
+        
+        // 验证 base64 是否可以正确解码
+        match base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &base64_data) {
+            Ok(decoded) => {
+                crate::log_message(&format!(
+                    "[Agnes Video] base64 验证通过, 解码后大小: {} bytes",
+                    decoded.len()
+                ));
+            }
+            Err(e) => {
+                crate::log_message(&format!(
+                    "[Agnes Video] base64 验证失败: {}",
+                    e
+                ));
+            }
+        }
+
+        let data_uri = format!("data:{};base64,{}", mime_type, base64_data);
+        Ok((data_uri, base64_data))
     }
 
     pub async fn generate_video(
@@ -261,18 +313,39 @@ impl AgnesProvider {
                 "single" => {
                     // 单图生视频：直接使用 image 参数
                     if let Some(image_path) = &options.image {
-                        let processed_image = self.process_image_input(image_path).await?;
-                        request_body["image"] = serde_json::json!(processed_image);
-                        crate::log_message(&format!("[Agnes Video] 单图模式，图片已处理"));
+                        crate::log_message(&format!("[Agnes Video] 处理单图: {}", image_path));
+                        match self.process_image_input(image_path).await {
+                            Ok((_, base64_data)) => {
+                                // 使用纯 base64 数据，不包含 data URI 前缀
+                                request_body["image"] = serde_json::json!(base64_data);
+                                crate::log_message(&format!("[Agnes Video] 单图模式，图片处理成功，使用纯base64数据"));
+                            }
+                            Err(e) => {
+                                crate::log_message(&format!("[Agnes Video] 单图处理失败: {}", e));
+                                return Err(e);
+                            }
+                        }
+                    } else {
+                        crate::log_message(&format!("[Agnes Video] 警告: 单图模式但未提供图片路径"));
                     }
                 }
                 "multi" | "keyframes" => {
                     // 多图/关键帧模式：使用 extra_body.image 数组
                     if let Some(images) = &options.images {
+                        crate::log_message(&format!("[Agnes Video] 处理多图/关键帧，共 {} 张", images.len()));
                         let mut processed_images = Vec::new();
-                        for image_path in images {
-                            let processed = self.process_image_input(image_path).await?;
-                            processed_images.push(processed);
+                        for (i, image_path) in images.iter().enumerate() {
+                            crate::log_message(&format!("[Agnes Video] 处理第 {} 张图片: {}", i + 1, image_path));
+                            match self.process_image_input(image_path).await {
+                                Ok((_, base64_data)) => {
+                                    // 使用纯 base64 数据
+                                    processed_images.push(base64_data);
+                                }
+                                Err(e) => {
+                                    crate::log_message(&format!("[Agnes Video] 第 {} 张图片处理失败: {}", i + 1, e));
+                                    return Err(e);
+                                }
+                            }
                         }
 
                         let mut extra_body = serde_json::json!({
@@ -290,9 +363,13 @@ impl AgnesProvider {
                             image_mode,
                             processed_images.len()
                         ));
+                    } else {
+                        crate::log_message(&format!("[Agnes Video] 警告: 多图/关键帧模式但未提供图片路径列表"));
                     }
                 }
-                _ => {}
+                _ => {
+                    crate::log_message(&format!("[Agnes Video] 警告: 未知的图生视频模式: {}", image_mode));
+                }
             }
         }
 
@@ -314,9 +391,30 @@ impl AgnesProvider {
             }
         ));
         crate::log_message(&format!("[Agnes Video] 创建任务: POST {}", create_endpoint));
+        
+        // 记录请求体摘要（避免输出完整的 base64 数据）
+        let mut log_body = request_body.clone();
+        if let Some(image) = log_body.get_mut("image").and_then(|i| i.as_str()) {
+            if image.starts_with("data:image/") {
+                let size = image.len();
+                log_body["image"] = serde_json::json!(format!("<base64 data, {} bytes>", size));
+            }
+        }
+        if let Some(images) = log_body.get_mut("extra_body").and_then(|e| e.get_mut("image")) {
+            if let Some(arr) = images.as_array_mut() {
+                for (i, img) in arr.iter_mut().enumerate() {
+                    if let Some(s) = img.as_str() {
+                        if s.starts_with("data:image/") {
+                            let size = s.len();
+                            *img = serde_json::json!(format!("<base64 data #{}, {} bytes>", i, size));
+                        }
+                    }
+                }
+            }
+        }
         crate::log_message(&format!(
             "[Agnes Video] 请求体: {}",
-            serde_json::to_string(&request_body).unwrap_or_default()
+            serde_json::to_string(&log_body).unwrap_or_default()
         ));
         crate::log_message(&format!("[Agnes Video] API Key: {}", key_preview));
 
@@ -487,9 +585,27 @@ impl AgnesProvider {
                     )));
                 }
                 "FAILED" | "FAILURE" | "ERROR" => {
+                    // 提取详细的错误信息
+                    // error 字段可能是字符串或对象 {"code": "...", "message": "..."}
+                    let error_msg = poll_result
+                        .get("error")
+                        .and_then(|e| {
+                            // 尝试获取 error.message
+                            e.get("message").and_then(|m| m.as_str())
+                                .or_else(|| e.as_str()) // 或者 error 直接是字符串
+                        })
+                        .or_else(|| poll_result.get("message").and_then(|m| m.as_str()))
+                        .unwrap_or("未知错误");
+                    
+                    crate::log_message(&format!(
+                        "[Agnes Video] 任务失败: {} - 完整响应: {}",
+                        error_msg,
+                        poll_result.to_string()
+                    ));
+                    
                     return Err(ProviderError::Api {
                         status: 500,
-                        message: "视频生成失败".to_string(),
+                        message: format!("视频生成失败: {}", error_msg),
                     });
                 }
                 "PENDING" | "PROCESSING" | "QUEUED" | "CREATED" | "RUNNING" | "IN_PROGRESS" => {
