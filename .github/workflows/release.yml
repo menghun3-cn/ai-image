@@ -12,7 +12,7 @@ on:
         default: 'v2.0.0'
 
 env:
-  PROJECT_PATH: ai-image-v2
+  PROJECT_PATH: .
 
 jobs:
   release:
