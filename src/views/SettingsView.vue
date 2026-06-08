@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { ref, onMounted, watch, nextTick } from "vue";
-import { loadConfig, saveConfig, updateAgnesModels, getAgnesModels, fetchProviderModels } from "@/lib/tauri";
+import { loadConfig, saveConfig, updateAgnesModels, getAgnesModels, fetchProviderModels, pickFolder } from "@/lib/tauri";
 import type { AppConfig, AgnesModelsStore, ProviderModel } from "@/lib/tauri";
 import Dialog from "@/components/Dialog.vue";
-import { InfoIcon, SlidersIcon, KeyIcon, GlobeIcon, FolderIcon, EyeIcon, EyeOffIcon, ExternalLinkIcon, RefreshCwIcon } from "lucide-vue-next";
+import { InfoIcon, SlidersIcon, KeyIcon, GlobeIcon, FolderIcon, EyeIcon, EyeOffIcon, ExternalLinkIcon, RefreshCwIcon, FolderOpenIcon } from "lucide-vue-next";
 
 // 各平台获取 API Key 的链接
 const providerLinks: Record<string, string> = {
@@ -260,6 +260,42 @@ async function resetToDefaults() {
     config.value.default_seed = -1;
     config.value.theme = "system";
     // 自动保存会触发
+  }
+}
+
+// 选择图片输出目录
+async function handlePickImageOutputDir() {
+  if (!config.value) return;
+  try {
+    const selected = await pickFolder(config.value.default_output_dir);
+    if (selected) {
+      config.value.default_output_dir = selected;
+    }
+  } catch (e) {
+    console.error("选择目录失败:", e);
+    await showDialog({
+      title: "错误",
+      message: "选择目录失败: " + String(e),
+      type: "error",
+    });
+  }
+}
+
+// 选择视频输出目录
+async function handlePickVideoOutputDir() {
+  if (!config.value) return;
+  try {
+    const selected = await pickFolder(config.value.default_video_output_dir);
+    if (selected) {
+      config.value.default_video_output_dir = selected;
+    }
+  } catch (e) {
+    console.error("选择目录失败:", e);
+    await showDialog({
+      title: "错误",
+      message: "选择目录失败: " + String(e),
+      type: "error",
+    });
   }
 }
 
@@ -881,22 +917,42 @@ const tabs = [
 
             <div class="p-4 rounded-lg border bg-card">
               <label class="block text-sm font-medium mb-2">图片默认输出目录</label>
-              <input
-                v-model="config.default_output_dir"
-                type="text"
-                class="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm"
-                placeholder="images"
-              />
+              <div class="flex gap-2">
+                <input
+                  v-model="config.default_output_dir"
+                  type="text"
+                  class="flex-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm"
+                  placeholder="images"
+                />
+                <button
+                  type="button"
+                  @click="handlePickImageOutputDir"
+                  class="flex items-center gap-1.5 px-3 py-2 text-sm font-medium bg-muted hover:bg-muted/80 border rounded-md transition-colors"
+                >
+                  <FolderOpenIcon class="w-4 h-4" />
+                  浏览
+                </button>
+              </div>
             </div>
 
             <div class="p-4 rounded-lg border bg-card">
               <label class="block text-sm font-medium mb-2">视频默认输出目录</label>
-              <input
-                v-model="config.default_video_output_dir"
-                type="text"
-                class="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm"
-                placeholder="video"
-              />
+              <div class="flex gap-2">
+                <input
+                  v-model="config.default_video_output_dir"
+                  type="text"
+                  class="flex-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm"
+                  placeholder="video"
+                />
+                <button
+                  type="button"
+                  @click="handlePickVideoOutputDir"
+                  class="flex items-center gap-1.5 px-3 py-2 text-sm font-medium bg-muted hover:bg-muted/80 border rounded-md transition-colors"
+                >
+                  <FolderOpenIcon class="w-4 h-4" />
+                  浏览
+                </button>
+              </div>
             </div>
 
             <div class="p-4 rounded-lg border bg-card">

@@ -1,6 +1,8 @@
 use crate::agnes_models;
 use crate::config_store;
 use crate::AppConfig;
+use tauri::{AppHandle, Manager};
+use tauri_plugin_dialog::DialogExt;
 
 #[tauri::command]
 pub fn load_config() -> Result<AppConfig, String> {
@@ -10,6 +12,27 @@ pub fn load_config() -> Result<AppConfig, String> {
 #[tauri::command]
 pub fn save_config(config: AppConfig) -> Result<(), String> {
     config_store::save_config_to_store(&config).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn pick_folder(app: AppHandle, default_path: Option<String>) -> Result<Option<String>, String> {
+    let mut dialog = app.dialog().file();
+    
+    if let Some(_path) = default_path {
+        if let Some(window) = app.get_webview_window("main") {
+            dialog = dialog.set_parent(&window);
+        }
+    }
+    
+    let result = dialog.blocking_pick_folder();
+    
+    match result {
+        Some(path) => {
+            // FilePath 实现了 Display trait，可以直接转换为字符串
+            Ok(Some(path.to_string()))
+        },
+        None => Ok(None),
+    }
 }
 
 #[tauri::command]

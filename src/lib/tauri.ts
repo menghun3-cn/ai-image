@@ -268,3 +268,8 @@ export async function fetchProviderModels(
 ): Promise<FetchProviderModelsResponse> {
   return invoke<FetchProviderModelsResponse>("fetch_provider_models", { request });
 }
+
+// 文件夹选择
+export async function pickFolder(defaultPath?: string): Promise<string | null> {
+  return invoke<string | null>("pick_folder", { defaultPath });
+}

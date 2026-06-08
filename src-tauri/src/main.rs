@@ -71,6 +71,7 @@ fn main() {
             commands::check_update,
             commands::download_and_install_update,
             commands::get_app_version,
+            commands::pick_folder,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
