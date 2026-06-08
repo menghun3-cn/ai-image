@@ -142,9 +142,9 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
         with:
           tag_name: ${{ steps.get_version.outputs.version }}
-          name: AI Image V2 ${{ steps.get_version.outputs.version }}
+          name: AI Image ${{ steps.get_version.outputs.version }}
           body: |
-            ## AI Image V2 ${{ steps.get_version.outputs.version }}
+            ## AI Image ${{ steps.get_version.outputs.version }}
 
             ### 安装包
             - Windows NSIS 安装程序 (推荐)

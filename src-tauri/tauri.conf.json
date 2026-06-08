@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "AI Image V2",
+  "productName": "AI Image",
   "version": "2.0.1",
   "identifier": "com.ai-image.app",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "AI Image V2",
+        "title": "AI Image",
         "width": 1200,
         "height": 800,
         "minWidth": 800,
