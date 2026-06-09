@@ -42,7 +42,7 @@ pub async fn check_update(app: AppHandle) -> Result<UpdateInfo, String> {
                         notes: update.body,
                         pub_date: update.date.map(|d| d.to_string()),
                         has_update: true,
-                        download_url: update.download_url.map(|u| u.to_string()),
+                        download_url: Some(update.download_url.to_string()),
                     })
                 }
                 Ok(None) => {
