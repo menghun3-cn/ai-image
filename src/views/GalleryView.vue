@@ -123,12 +123,6 @@ const hasMoreImages = computed(() => {
   return loadedCount.value < allImages.value.length;
 });
 
-// 计算属性：加载进度百分比
-const loadProgress = computed(() => {
-  if (allImages.value.length === 0) return 0;
-  return Math.round((loadedCount.value / allImages.value.length) * 100);
-});
-
 onMounted(async () => {
   // 从配置加载输出目录
   try {
@@ -412,22 +406,6 @@ function removeKeyListener() {
           <RefreshCwIcon :class="['w-4 h-4', { 'animate-spin': isLoading }]" />
           刷新
         </button>
-      </div>
-    </div>
-
-    <!-- 加载进度条 -->
-    <div v-if="allImages.length > 0 && loadedCount < allImages.length" class="mb-4">
-      <div class="flex items-center gap-3">
-        <div class="flex-1 h-2 bg-muted rounded-full overflow-hidden">
-          <div 
-            class="h-full bg-primary transition-all duration-300 ease-out"
-            :style="{ width: `${loadProgress}%` }"
-          />
-        </div>
-        <span class="text-xs text-muted-foreground whitespace-nowrap">
-          {{ loadProgress }}%
-        </span>
-        <Loader2Icon v-if="isLoadingMore" class="w-4 h-4 animate-spin text-primary" />
       </div>
     </div>
 

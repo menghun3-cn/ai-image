@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from "vue";
+import { ref, onMounted, onUnmounted, computed, nextTick } from "vue";
 import { getVideos, deleteVideo, openVideoDir, loadConfig } from "@/lib/tauri";
 import Dialog from "@/components/Dialog.vue";
-import { TrashIcon, FolderOpenIcon, RefreshCwIcon, VideoIcon, XIcon, PlayIcon } from "lucide-vue-next";
+import { TrashIcon, FolderOpenIcon, RefreshCwIcon, VideoIcon, XIcon, PlayIcon, Loader2Icon } from "lucide-vue-next";
 import { formatTime } from "@/lib/utils";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { readFile } from "@tauri-apps/plugin-fs";
@@ -55,15 +55,33 @@ interface VideoItem {
   time: number;
   url?: string;
   blobUrl?: string;
+  loaded?: boolean;
+  loading?: boolean;
 }
 
-const videos = ref<VideoItem[]>([]);
+// 加载配置
+const INITIAL_LOAD_COUNT = 12; // 初始加载数量（视频比图片大，数量减少）
+const CHUNK_SIZE = 6; // 每批加载数量
+
+const allVideos = ref<VideoItem[]>([]); // 所有视频元数据
+const displayedVideos = ref<VideoItem[]>([]); // 已加载显示的视频
 const outputDir = ref("video");
 const isLoading = ref(false);
+const isLoadingMore = ref(false);
+const loadedCount = ref(0);
 const selectedVideo = ref<VideoItem | null>(null);
 const isPlaying = ref(false);
 const videoPlayerRef = ref<HTMLVideoElement | null>(null);
 const previewBlobUrl = ref<string | null>(null);
+const videoGridRef = ref<HTMLElement | null>(null);
+
+// IntersectionObserver 实例
+let videoObserver: IntersectionObserver | null = null;
+
+// 计算属性：是否还有更多视频需要加载
+const hasMoreVideos = computed(() => {
+  return loadedCount.value < allVideos.value.length;
+});
 
 onMounted(async () => {
   // 从配置加载输出目录
@@ -84,7 +102,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   // 清理 blob URL
-  videos.value.forEach(video => {
+  displayedVideos.value.forEach(video => {
     if (video.blobUrl) {
       URL.revokeObjectURL(video.blobUrl);
     }
@@ -92,7 +110,69 @@ onUnmounted(() => {
   if (previewBlobUrl.value) {
     URL.revokeObjectURL(previewBlobUrl.value);
   }
+  // 清理 IntersectionObserver
+  if (videoObserver) {
+    videoObserver.disconnect();
+    videoObserver = null;
+  }
 });
+
+// 初始化 IntersectionObserver 用于可视区域优先加载
+function initIntersectionObserver() {
+  if (videoObserver) {
+    videoObserver.disconnect();
+  }
+  
+  videoObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const path = entry.target.getAttribute('data-path');
+        if (path) {
+          // 找到对应的视频并优先加载
+          const videoItem = displayedVideos.value.find(v => v.path === path);
+          if (videoItem && !videoItem.blobUrl && !videoItem.loading) {
+            loadVideoItem(videoItem);
+          }
+        }
+      }
+    });
+  }, {
+    root: null,
+    rootMargin: '100px', // 提前 100px 开始加载
+    threshold: 0.1
+  });
+  
+  // 观察所有未加载的视频元素
+  nextTick(() => {
+    const videoElements = document.querySelectorAll('[data-path]');
+    videoElements.forEach(el => {
+      const path = el.getAttribute('data-path');
+      const videoItem = displayedVideos.value.find(v => v.path === path);
+      if (videoItem && !videoItem.blobUrl) {
+        videoObserver?.observe(el);
+      }
+    });
+  });
+}
+
+// 加载单个视频
+async function loadVideoItem(videoItem: VideoItem) {
+  if (videoItem.loading || videoItem.blobUrl) return;
+  
+  videoItem.loading = true;
+  try {
+    console.log("[VideoGallery] Loading video as blob:", videoItem.path);
+    const fileData = await readFile(videoItem.path);
+    const blob = new Blob([fileData], { type: 'video/mp4' });
+    videoItem.blobUrl = URL.createObjectURL(blob);
+    videoItem.loaded = true;
+    console.log("[VideoGallery] Created blob URL:", videoItem.blobUrl);
+  } catch (error) {
+    console.error("[VideoGallery] Failed to load video as blob:", error);
+  } finally {
+    videoItem.loading = false;
+  }
+}
 
 // 加载视频为 Blob URL（更可靠的方式）
 async function loadVideoAsBlob(path: string): Promise<string | null> {
@@ -111,31 +191,100 @@ async function loadVideoAsBlob(path: string): Promise<string | null> {
 
 async function loadVideos() {
   isLoading.value = true;
+  loadedCount.value = 0;
+  displayedVideos.value = [];
+  allVideos.value = [];
+  
   try {
     // 确保 outputDir 有值
     const dir = outputDir.value || "video";
     console.log("[VideoGallery] Loading videos from:", dir);
     const loadedVideos = await getVideos(dir);
-    console.log("[VideoGallery] Loaded videos:", loadedVideos.length);
+    console.log("[VideoGallery] Total videos found:", loadedVideos.length);
     
-    // 为每个视频生成 blob URL
-    const videosWithUrls: VideoItem[] = [];
-    for (const video of loadedVideos) {
-      const blobUrl = await loadVideoAsBlob(video.path);
-      videosWithUrls.push({
-        ...video,
-        url: convertFileSrc(video.path),
-        blobUrl: blobUrl || undefined,
-      });
+    // 保存所有视频元数据（不含 URL）
+    allVideos.value = loadedVideos.map(video => ({
+      ...video,
+      url: convertFileSrc(video.path),
+      blobUrl: undefined,
+      loaded: false,
+      loading: false,
+    }));
+    
+    // 初始加载前 N 个
+    await loadMoreVideos(INITIAL_LOAD_COUNT);
+    
+    console.log("[VideoGallery] Initial videos loaded:", displayedVideos.value.length);
+    
+    // 初始化 IntersectionObserver
+    initIntersectionObserver();
+    
+    // 如果还有更多视频，在后台继续加载
+    if (hasMoreVideos.value) {
+      loadRemainingInBackground();
     }
-    
-    videos.value = videosWithUrls;
-    console.log("[VideoGallery] Videos with blob URLs loaded:", videos.value.length);
   } catch (e) {
     console.error("Failed to load videos:", e);
   } finally {
     isLoading.value = false;
   }
+}
+
+// 加载更多视频
+async function loadMoreVideos(count: number = CHUNK_SIZE) {
+  if (isLoadingMore.value) return;
+  if (loadedCount.value >= allVideos.value.length) return;
+  
+  isLoadingMore.value = true;
+  
+  const start = loadedCount.value;
+  const end = Math.min(start + count, allVideos.value.length);
+  const batch = allVideos.value.slice(start, end);
+  
+  try {
+    // 并行加载这一批视频
+    const loadedBatch = await Promise.all(
+      batch.map(async (video) => {
+        const blobUrl = await loadVideoAsBlob(video.path);
+        return {
+          ...video,
+          blobUrl: blobUrl || undefined,
+          loaded: !!blobUrl,
+          loading: false,
+        };
+      })
+    );
+    
+    // 添加到已显示列表
+    displayedVideos.value.push(...loadedBatch);
+    loadedCount.value = end;
+    
+    console.log(`[VideoGallery] Loaded batch: ${start} - ${end}, total loaded: ${loadedCount.value}`);
+    
+    // 重新初始化 IntersectionObserver
+    nextTick(() => {
+      initIntersectionObserver();
+    });
+  } catch (e) {
+    console.error("[VideoGallery] Failed to load video batch:", e);
+  } finally {
+    isLoadingMore.value = false;
+  }
+}
+
+// 后台继续加载剩余视频
+async function loadRemainingInBackground() {
+  while (loadedCount.value < allVideos.value.length) {
+    // 使用 setTimeout 让出主线程，避免阻塞 UI
+    await new Promise(resolve => setTimeout(resolve, 200));
+    await loadMoreVideos(CHUNK_SIZE);
+  }
+  console.log("[VideoGallery] All videos loaded:", loadedCount.value);
+}
+
+// 手动加载更多
+async function handleLoadMore() {
+  await loadMoreVideos(CHUNK_SIZE);
 }
 
 async function handleDelete(path: string) {
@@ -197,8 +346,6 @@ function closeVideoModal() {
   removeKeyListener();
 }
 
-
-
 function handleKeyDown(event: KeyboardEvent) {
   if (event.key === "Escape") {
     closeVideoModal();
@@ -234,7 +381,12 @@ function handleVideoError(e: Event) {
     <div class="flex items-center justify-between mb-6">
       <div>
         <h1 class="text-2xl font-bold">视频库</h1>
-        <p class="text-sm text-muted-foreground mt-1">共 {{ videos.length }} 个视频</p>
+        <p class="text-sm text-muted-foreground mt-1">
+          共 {{ allVideos.length }} 个视频
+          <span v-if="loadedCount < allVideos.length" class="text-primary">
+            （已加载 {{ loadedCount }} 个）
+          </span>
+        </p>
       </div>
       <div class="flex items-center gap-2">
         <button
@@ -256,55 +408,97 @@ function handleVideoError(e: Event) {
     </div>
 
     <!-- Empty State -->
-    <div v-if="videos.length === 0 && !isLoading" class="text-center py-20">
+    <div v-if="allVideos.length === 0 && !isLoading" class="text-center py-20">
       <VideoIcon class="w-16 h-16 mx-auto text-muted-foreground mb-4" />
       <p class="text-muted-foreground">暂无视频</p>
       <p class="text-xs text-muted-foreground mt-2">生成的视频将显示在这里</p>
     </div>
 
+    <!-- Loading State -->
+    <div v-else-if="isLoading" class="text-center py-20">
+      <Loader2Icon class="w-12 h-12 mx-auto text-primary animate-spin mb-4" />
+      <p class="text-muted-foreground">正在加载视频...</p>
+    </div>
+
     <!-- Video Grid -->
-    <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-      <div
-        v-for="video in videos"
-        :key="video.path"
-        class="group relative border rounded-lg overflow-hidden hover:shadow-lg transition-shadow"
-      >
-        <!-- 视频缩略图/播放按钮区域 -->
-        <div 
-          class="w-full aspect-video bg-black flex items-center justify-center cursor-pointer relative overflow-hidden"
-          @click="openVideoModal(video)"
+    <div v-else class="space-y-4">
+      <div ref="videoGridRef" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div
+          v-for="video in displayedVideos"
+          :key="video.path"
+          :data-path="video.path"
+          class="group relative border rounded-lg overflow-hidden hover:shadow-lg transition-shadow"
         >
-          <!-- 使用 video 标签显示第一帧作为封面 -->
-          <video
-            v-if="video.blobUrl"
-            :src="video.blobUrl"
-            class="w-full h-full object-cover"
-            preload="metadata"
-            muted
-            playsinline
-          ></video>
-          <VideoIcon v-else class="w-12 h-12 text-white/50" />
-          <!-- 播放按钮覆盖层 -->
-          <div class="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity">
-            <div class="w-16 h-16 rounded-full bg-white/90 flex items-center justify-center">
-              <PlayIcon class="w-8 h-8 text-black ml-1" />
+          <!-- 视频缩略图/播放按钮区域 -->
+          <div 
+            class="w-full aspect-video bg-black flex items-center justify-center cursor-pointer relative overflow-hidden"
+            @click="openVideoModal(video)"
+          >
+            <!-- 使用 video 标签显示第一帧作为封面 -->
+            <video
+              v-if="video.blobUrl"
+              :src="video.blobUrl"
+              class="w-full h-full object-cover"
+              preload="metadata"
+              muted
+              playsinline
+            ></video>
+            <div v-else class="flex items-center justify-center">
+              <Loader2Icon class="w-8 h-8 animate-spin text-white/50" />
             </div>
+            <!-- 播放按钮覆盖层 -->
+            <div class="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity">
+              <div class="w-16 h-16 rounded-full bg-white/90 flex items-center justify-center">
+                <PlayIcon class="w-8 h-8 text-black ml-1" />
+              </div>
+            </div>
+          </div>
+          
+          <!-- 删除按钮 - 右上角 -->
+          <button
+            @click.stop="handleDelete(video.path)"
+            class="absolute top-2 right-2 p-1.5 bg-black/50 hover:bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+            title="删除"
+          >
+            <TrashIcon class="w-3.5 h-3.5" />
+          </button>
+          
+          <!-- 视频信息 -->
+          <div class="p-3 bg-card">
+            <p class="text-sm font-medium truncate">{{ video.name }}</p>
+            <p class="text-xs text-muted-foreground mt-1">{{ formatTime(video.time) }}</p>
           </div>
         </div>
         
-        <!-- 删除按钮 - 右上角 -->
-        <button
-          @click.stop="handleDelete(video.path)"
-          class="absolute top-2 right-2 p-1.5 bg-black/50 hover:bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-          title="删除"
+        <!-- 骨架屏占位（未加载的视频） -->
+        <div
+          v-for="i in Math.min(allVideos.length - displayedVideos.length, 6)"
+          :key="`skeleton-${i}`"
+          class="border rounded-lg overflow-hidden"
         >
-          <TrashIcon class="w-3.5 h-3.5" />
+          <div class="w-full aspect-video bg-muted animate-pulse" />
+          <div class="p-3 bg-card space-y-2">
+            <div class="h-4 bg-muted rounded animate-pulse w-3/4" />
+            <div class="h-3 bg-muted rounded animate-pulse w-1/2" />
+          </div>
+        </div>
+      </div>
+      
+      <!-- 加载更多按钮 -->
+      <div v-if="hasMoreVideos && !isLoadingMore" class="text-center py-4">
+        <button
+          @click="handleLoadMore"
+          class="px-6 py-2 border rounded-lg hover:bg-muted transition-colors"
+        >
+          加载更多（剩余 {{ allVideos.length - loadedCount }} 个）
         </button>
-        
-        <!-- 视频信息 -->
-        <div class="p-3 bg-card">
-          <p class="text-sm font-medium truncate">{{ video.name }}</p>
-          <p class="text-xs text-muted-foreground mt-1">{{ formatTime(video.time) }}</p>
+      </div>
+      
+      <!-- 正在加载更多 -->
+      <div v-else-if="isLoadingMore" class="text-center py-4">
+        <div class="flex items-center justify-center gap-2 text-muted-foreground">
+          <Loader2Icon class="w-4 h-4 animate-spin" />
+          <span>正在加载...</span>
         </div>
       </div>
     </div>
@@ -342,7 +536,7 @@ function handleVideoError(e: Event) {
             v-else
             class="w-full aspect-video flex items-center justify-center"
           >
-            <VideoIcon class="w-20 h-20 text-white/30" />
+            <Loader2Icon class="w-12 h-12 animate-spin text-white/30" />
           </div>
         </div>
         
