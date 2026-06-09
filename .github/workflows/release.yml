@@ -132,9 +132,13 @@ jobs:
           if ($privateKey -and $privateKey -ne "") {
             Write-Output "Signing installer with Tauri..."
             try {
+              # 清理私钥：移除换行符和空格
+              $cleanKey = $privateKey -replace '\r?\n', '' -replace '\s', ''
+              Write-Output "Private key length after cleaning: $($cleanKey.Length)"
+              
               # 将私钥写入临时文件
               $keyFile = [System.IO.Path]::GetTempFileName()
-              $privateKey | Out-File -FilePath $keyFile -Encoding UTF8 -NoNewline
+              $cleanKey | Out-File -FilePath $keyFile -Encoding UTF8 -NoNewline
               
               # 使用 Tauri CLI 签名 - 正确的参数格式
               $sigFile = "$($nsisPath.FullName).sig"
