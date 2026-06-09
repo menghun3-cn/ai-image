@@ -1,0 +1,11 @@
+{
+  "version": "v2.0.2",
+  "notes": "AI Image V2 更新",
+  "pub_date": "2026-06-09T00:00:00Z",
+  "platforms": {
+    "windows-x86_64": {
+      "signature": "Content of the .sig file",
+      "url": "https://github.com/menghun3-cn/ai-image/releases/download/v2.0.2/AI-Image_2.0.2_x64-setup.exe"
+    }
+  }
+}
