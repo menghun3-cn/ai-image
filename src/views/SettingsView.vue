@@ -3,7 +3,7 @@ import { ref, onMounted, watch, nextTick, computed } from "vue";
 import { loadConfig, saveConfig, updateAgnesModels, getAgnesModels, fetchProviderModels, pickFolder, getDefaultStoragePaths } from "@/lib/tauri";
 import type { AppConfig, AgnesModelsStore, ProviderModel, DefaultStoragePaths } from "@/lib/tauri";
 import Dialog from "@/components/Dialog.vue";
-import { InfoIcon, SlidersIcon, KeyIcon, GlobeIcon, FolderIcon, EyeIcon, EyeOffIcon, ExternalLinkIcon, RefreshCwIcon, FolderOpenIcon } from "lucide-vue-next";
+import { SlidersIcon, KeyIcon, GlobeIcon, FolderIcon, EyeIcon, EyeOffIcon, ExternalLinkIcon, RefreshCwIcon, FolderOpenIcon } from "lucide-vue-next";
 
 // 各平台获取 API Key 的链接
 const providerLinks: Record<string, string> = {
@@ -138,8 +138,7 @@ function toggleKeyVisibility(key: keyof typeof showKeys.value) {
   showKeys.value[key] = !showKeys.value[key];
 }
 
-const appVersion = "2.0.0";
-const tauriVersion = "2.10.3";
+
 
 onMounted(async () => {
   try {
@@ -329,7 +328,6 @@ const tabs = [
   { id: "model", label: "模型参数", icon: SlidersIcon },
   { id: "proxy", label: "代理设置", icon: GlobeIcon },
   { id: "general", label: "常规设置", icon: FolderIcon },
-  { id: "about", label: "关于", icon: InfoIcon },
 ];
 </script>
 
@@ -1017,64 +1015,6 @@ const tabs = [
           </div>
         </div>
 
-        <!-- 关于 -->
-        <div v-if="activeTab === 'about'" class="space-y-6">
-          <div class="flex items-center gap-3 pb-4 border-b">
-            <InfoIcon class="w-5 h-5 text-primary" />
-            <div>
-              <h2 class="text-lg font-semibold">关于</h2>
-              <p class="text-sm text-muted-foreground">应用信息</p>
-            </div>
-          </div>
-
-          <div class="p-6 rounded-lg border bg-card text-center">
-            <div class="w-16 h-16 mx-auto mb-4 rounded-xl bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center text-primary-foreground text-2xl font-bold">
-              AI
-            </div>
-            <h3 class="text-xl font-bold mb-1">AI Image V2</h3>
-            <p class="text-sm text-muted-foreground mb-4">AI 图片生成桌面应用</p>
-            
-            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-muted text-xs">
-              <span class="w-2 h-2 rounded-full bg-green-500"></span>
-              版本 {{ appVersion }}
-            </div>
-          </div>
-
-          <div class="grid gap-3">
-            <div class="flex items-center justify-between p-3 rounded-lg border bg-card">
-              <span class="text-sm text-muted-foreground">Tauri 版本</span>
-              <span class="text-sm font-mono">{{ tauriVersion }}</span>
-            </div>
-            <div class="flex items-center justify-between p-3 rounded-lg border bg-card">
-              <span class="text-sm text-muted-foreground">Vue 版本</span>
-              <span class="text-sm font-mono">3.5.13</span>
-            </div>
-            <div class="flex items-center justify-between p-3 rounded-lg border bg-card">
-              <span class="text-sm text-muted-foreground">Rust 版本</span>
-              <span class="text-sm font-mono">1.85+</span>
-            </div>
-            <div class="flex items-center justify-between p-3 rounded-lg border bg-card">
-              <span class="text-sm text-muted-foreground">支持平台</span>
-              <span class="text-sm">Windows 10/11</span>
-            </div>
-          </div>
-
-          <div class="p-4 rounded-lg border bg-muted/50">
-            <h4 class="text-sm font-medium mb-2">功能特性</h4>
-            <ul class="text-sm text-muted-foreground space-y-1">
-              <li>• 支持 6 个 AI 图片生成提供商</li>
-              <li>• 批量生成与单图生成</li>
-              <li>• AI 提示词优化</li>
-              <li>• 图库管理与预览</li>
-              <li>• 8 种图片比例选择</li>
-            </ul>
-          </div>
-
-          <div class="text-center text-xs text-muted-foreground">
-            <p>© 2026 AI Image V2. All rights reserved.</p>
-            <p class="mt-1">基于 Tauri + Vue 构建</p>
-          </div>
-        </div>
       </div>
     </main>
   </div>

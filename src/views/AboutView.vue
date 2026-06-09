@@ -84,7 +84,7 @@ async function downloadAndInstall() {
 
 // 打开 GitHub 仓库
 function openGithub() {
-  window.open("https://github.com/menghun3-cn/ai-image", "_blank");
+  window.open("https://github.com/menghun3-cn/ai-image/", "_blank");
 }
 
 onMounted(() => {
@@ -101,7 +101,7 @@ onMounted(() => {
         AI
       </div>
       <div>
-        <h1 class="text-2xl font-bold">AI Image V2</h1>
+        <h1 class="text-2xl font-bold">ai-image</h1>
         <p class="text-muted-foreground">AI 图片生成工具</p>
       </div>
     </div>
