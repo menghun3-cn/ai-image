@@ -102,11 +102,11 @@ jobs:
           Write-Output "Version: $version"
           Write-Output "Version Number: $versionNumber"
 
-      - name: Install cargo-tauri
+      - name: Install tauri-cli
         shell: pwsh
         run: |
-          cargo install cargo-tauri
-          Write-Output "cargo-tauri installed successfully"
+          cargo install tauri-cli
+          Write-Output "tauri-cli installed successfully"
 
       - name: Generate latest.json for updater
         shell: pwsh
