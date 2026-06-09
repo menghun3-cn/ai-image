@@ -119,24 +119,44 @@ jobs:
           
           # 尝试使用 Tauri 签名工具生成签名
           $signature = ""
-          $privateKey = $env:TAURI_SIGNING_PRIVATE_KEY
-          if ($privateKey) {
+          # 从 GitHub Actions 环境获取私钥（在 env 中已定义）
+          $privateKey = "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}"
+          $privateKeyPassword = "${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}"
+          
+          if ($privateKey -and $privateKey -ne "") {
             Write-Output "Signing installer with Tauri..."
             try {
+              # 将私钥写入临时文件
+              $keyFile = [System.IO.Path]::GetTempFileName()
+              $privateKey | Out-File -FilePath $keyFile -Encoding UTF8 -NoNewline
+              
               # 使用 Tauri CLI 签名
-              $sigOutput = & cargo tauri signer sign --private-key "$privateKey" --password "$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD" --file "$($nsisPath.FullName)" 2>&1
+              $sigFile = "$($nsisPath.FullName).sig"
+              if ($privateKeyPassword -and $privateKeyPassword -ne "") {
+                $sigOutput = & cargo tauri signer sign --private-key "$keyFile" --password "$privateKeyPassword" --file "$($nsisPath.FullName)" 2>&1
+              } else {
+                $sigOutput = & cargo tauri signer sign --private-key "$keyFile" --file "$($nsisPath.FullName)" 2>&1
+              }
+              
               if ($LASTEXITCODE -eq 0) {
-                $sigFile = "$($nsisPath.FullName).sig"
                 if (Test-Path $sigFile) {
                   $signature = Get-Content $sigFile -Raw
                   Write-Output "Signature generated successfully"
+                } else {
+                  Write-Warning "Signature file not found after signing"
                 }
+              } else {
+                Write-Warning "Tauri signer failed with exit code $LASTEXITCODE"
+                Write-Warning "Output: $sigOutput"
               }
+              
+              # 清理临时私钥文件
+              Remove-Item -Path $keyFile -Force -ErrorAction SilentlyContinue
             } catch {
               Write-Warning "Failed to sign installer: $_"
             }
           } else {
-            Write-Warning "No signing key found, generating unsigned latest.json"
+            Write-Warning "No signing key found (TAURI_SIGNING_PRIVATE_KEY secret not set), generating unsigned latest.json"
           }
           
           $json = @{
