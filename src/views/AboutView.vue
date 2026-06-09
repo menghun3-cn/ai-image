@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
 import { invoke } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-shell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -83,8 +84,12 @@ async function downloadAndInstall() {
 }
 
 // 打开 GitHub 仓库
-function openGithub() {
-  window.open("https://github.com/menghun3-cn/ai-image/", "_blank");
+async function openGithub() {
+  try {
+    await open("https://github.com/menghun3-cn/ai-image/");
+  } catch (e) {
+    console.error("打开链接失败:", e);
+  }
 }
 
 onMounted(() => {
@@ -95,7 +100,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="p-6 max-w-2xl mx-auto">
+  <div class="p-6 max-w-2xl mx-auto h-full flex flex-col">
     <div class="flex items-center gap-3 mb-6">
       <div class="w-16 h-16 bg-primary rounded-xl flex items-center justify-center text-primary-foreground text-2xl font-bold">
         AI
@@ -107,7 +112,7 @@ onMounted(() => {
     </div>
 
     <!-- 版本信息卡片 -->
-    <Card class="mb-6">
+    <Card class="mb-6 flex-shrink-0">
       <CardHeader>
         <CardTitle class="flex items-center gap-2">
           <InfoIcon class="w-5 h-5" />
@@ -130,16 +135,19 @@ onMounted(() => {
           <div class="flex items-center justify-between">
             <span class="text-muted-foreground">最新版本</span>
             <div class="flex items-center gap-2">
+              <span class="text-base font-medium">v{{ updateInfo.version }}</span>
               <Badge 
-                :variant="updateInfo.has_update ? 'destructive' : 'default'"
-                class="text-lg px-3 py-1"
+                v-if="updateInfo.has_update" 
+                variant="default"
+                class="text-xs px-2 py-0.5"
               >
-                v{{ updateInfo.version }}
-              </Badge>
-              <Badge v-if="updateInfo.has_update" variant="destructive">
                 可升级
               </Badge>
-              <Badge v-else variant="default">
+              <Badge 
+                v-else 
+                variant="secondary"
+                class="text-xs px-2 py-0.5"
+              >
                 已是最新
               </Badge>
             </div>
@@ -204,7 +212,7 @@ onMounted(() => {
     </Card>
 
     <!-- 项目信息卡片 -->
-    <Card>
+    <Card class="flex-shrink-0">
       <CardHeader>
         <CardTitle class="flex items-center gap-2">
           <GithubIcon class="w-5 h-5" />
@@ -242,8 +250,8 @@ onMounted(() => {
     </Card>
 
     <!-- 版权信息 -->
-    <p class="text-center text-sm text-muted-foreground mt-6">
-      © 2026 AI Image V2. All rights reserved.
+    <p class="text-center text-sm text-muted-foreground mt-auto pt-6">
+      © 2026 ai-image. All rights reserved.
     </p>
   </div>
 </template>

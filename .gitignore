@@ -35,3 +35,5 @@ images/
 src-tauri/portable/
 dist-portable/
 video/
+.tauri-signing.key
+.tauri-signing.key.pub
