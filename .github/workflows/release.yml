@@ -258,10 +258,16 @@ jobs:
             Write-Warning "No signing key found (TAURI_SIGNING_PRIVATE_KEY secret not set), generating unsigned latest.json"
           }
           
+          # 读取生成的 changelog 内容
+          $changelogContent = Get-Content -Path "CHANGELOG_RELEASE.md" -Raw -Encoding UTF8
+          
+          # 确保日期格式正确 (ISO 8601)
+          $pubDate = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+          
           $json = @{
             version = $versionNumber
-            notes = "See full release notes at https://github.com/menghun3-cn/ai-image/releases/tag/$version"
-            pub_date = $date
+            notes = $changelogContent
+            pub_date = $pubDate
             platforms = @{
               "windows-x86_64" = @{
                 signature = $signature
