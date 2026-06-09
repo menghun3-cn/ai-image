@@ -141,6 +141,11 @@ jobs:
           # 生成变更日志
           $changelog = "## AI-Image $version`n`n"
           
+          $changelog += "### 首次使用`n"
+          $changelog += "1. 打开设置页面配置 API Key`n"
+          $changelog += "2. 选择 AI 提供商`n"
+          $changelog += "3. 开始生成图片`n`n"
+          
           if ($features.Count -gt 0) {
             $changelog += "### 新功能`n"
             foreach ($feat in $features) {
