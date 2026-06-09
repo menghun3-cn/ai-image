@@ -102,6 +102,97 @@ jobs:
           Write-Output "Version: $version"
           Write-Output "Version Number: $versionNumber"
 
+      - name: Generate Changelog
+        id: changelog
+        shell: pwsh
+        run: |
+          $version = '${{ steps.get_version.outputs.version }}'
+          
+          # 获取上一个 tag
+          $lastTag = git describe --tags --abbrev=0 HEAD~1 2>$null
+          if (-not $lastTag) {
+            $lastTag = git rev-list --max-parents=0 HEAD
+          }
+          
+          Write-Output "Generating changelog from $lastTag to $version"
+          
+          # 获取提交信息
+          $commits = git log "$lastTag..HEAD" --pretty=format:"%s" --no-merges
+          
+          # 分类存储
+          $features = @()
+          $changes = @()
+          $fixes = @()
+          $others = @()
+          
+          foreach ($commit in $commits -split "`n") {
+            $commit = $commit.Trim()
+            if ($commit -match "^feat[\(:]") {
+              $features += $commit
+            } elseif ($commit -match "^fix[\(:]") {
+              $fixes += $commit
+            } elseif ($commit -match "^(refactor|perf|chore|docs|style|test)[\(:]") {
+              $changes += $commit
+            } elseif ($commit -ne "" -and $commit -notmatch "^Merge") {
+              $others += $commit
+            }
+          }
+          
+          # 生成变更日志
+          $changelog = "## AI-Image $version`n`n"
+          
+          if ($features.Count -gt 0) {
+            $changelog += "### 新功能`n"
+            foreach ($feat in $features) {
+              $changelog += "- $feat`n"
+            }
+            $changelog += "`n"
+          }
+          
+          if ($changes.Count -gt 0) {
+            $changelog += "### 变更`n"
+            foreach ($change in $changes) {
+              $changelog += "- $change`n"
+            }
+            $changelog += "`n"
+          }
+          
+          if ($fixes.Count -gt 0) {
+            $changelog += "### 修复`n"
+            foreach ($fix in $fixes) {
+              $changelog += "- $fix`n"
+            }
+            $changelog += "`n"
+          }
+          
+          if ($others.Count -gt 0) {
+            $changelog += "### 其他`n"
+            foreach ($other in $others) {
+              $changelog += "- $other`n"
+            }
+            $changelog += "`n"
+          }
+          
+          $changelog += "---`n`n"
+          $changelog += "### 安装包`n"
+          $changelog += "- Windows NSIS 安装程序 (推荐)`n"
+          $changelog += "- Windows MSI 安装包`n`n"
+          $changelog += "### 系统要求`n"
+          $changelog += "- Windows 10/11 64位`n"
+          $changelog += "- 4GB RAM`n"
+          $changelog += "- 500MB 可用磁盘空间`n`n"
+          $changelog += "详细说明请参考 [发布说明](../../blob/main/ai-image-v2-docs/08-发布说明.md)"
+          
+          # 输出到文件
+          $changelog | Out-File -FilePath "CHANGELOG_RELEASE.md" -Encoding UTF8
+          
+          # 设置输出变量（多行处理）
+          $changelogEscaped = $changelog -replace '`n', '%0A' -replace '`r', ''
+          Write-Output "changelog=$changelogEscaped" >> $env:GITHUB_OUTPUT
+          
+          Write-Output "Generated Changelog:"
+          Get-Content "CHANGELOG_RELEASE.md"
+
       - name: Install tauri-cli
         shell: pwsh
         run: |
@@ -221,29 +312,13 @@ jobs:
         with:
           tag_name: ${{ steps.get_version.outputs.version }}
           name: AI-Image ${{ steps.get_version.outputs.version }}
-          body: |
-            ## AI-Image ${{ steps.get_version.outputs.version }}
-
-            ### 安装包
-            - Windows NSIS 安装程序 (推荐)
-            - Windows MSI 安装包
-
-            ### 系统要求
-            - Windows 10/11 64位
-            - 4GB RAM
-            - 500MB 可用磁盘空间
-
-            ### 首次使用
-            1. 打开设置页面配置 API Key
-            2. 选择 AI 提供商
-            3. 开始生成图片
-
-            详细说明请参考 [发布说明](../../blob/main/ai-image-v2-docs/08-发布说明.md)
+          body_path: CHANGELOG_RELEASE.md
           files: |
             release-artifacts/*.exe
             release-artifacts/*.msi
             release-artifacts/latest.json
           draft: false
           prerelease: false
+          make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
