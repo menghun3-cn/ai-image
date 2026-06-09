@@ -136,12 +136,12 @@ jobs:
               $keyFile = [System.IO.Path]::GetTempFileName()
               $privateKey | Out-File -FilePath $keyFile -Encoding UTF8 -NoNewline
               
-              # 使用 Tauri CLI 签名
+              # 使用 Tauri CLI 签名 - 正确的参数格式
               $sigFile = "$($nsisPath.FullName).sig"
               if ($privateKeyPassword -and $privateKeyPassword -ne "") {
-                $sigOutput = & cargo tauri signer sign --private-key "$keyFile" --password "$privateKeyPassword" --file "$($nsisPath.FullName)" 2>&1
+                $sigOutput = & cargo tauri signer sign -k "$keyFile" -p "$privateKeyPassword" "$($nsisPath.FullName)" 2>&1
               } else {
-                $sigOutput = & cargo tauri signer sign --private-key "$keyFile" --file "$($nsisPath.FullName)" 2>&1
+                $sigOutput = & cargo tauri signer sign -k "$keyFile" "$($nsisPath.FullName)" 2>&1
               }
               
               if ($LASTEXITCODE -eq 0) {
