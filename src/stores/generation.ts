@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
 import { ref, computed } from "vue";
-import type { GenerationStatus, AppConfig, OptimizeResult } from "@/lib/tauri";
+import type { GenerationStatus, AppConfig, OptimizeResult, ReferenceImage } from "@/lib/tauri";
 
 export const useGenerationStore = defineStore("generation", () => {
   // 生成状态
@@ -39,6 +39,55 @@ export const useGenerationStore = defineStore("generation", () => {
 
   // 配置
   const config = ref<AppConfig | null>(null);
+
+  // 参考图片（持久化到 localStorage）
+  const referenceImages = ref<ReferenceImage[]>([]);
+
+  // 从 localStorage 加载参考图片
+  function loadReferenceImages() {
+    try {
+      const saved = localStorage.getItem("referenceImages");
+      if (saved) {
+        referenceImages.value = JSON.parse(saved);
+      }
+    } catch (e) {
+      console.error("[generation store] Failed to load reference images:", e);
+      referenceImages.value = [];
+    }
+  }
+
+  // 保存参考图片到 localStorage
+  function saveReferenceImages() {
+    try {
+      localStorage.setItem("referenceImages", JSON.stringify(referenceImages.value));
+    } catch (e) {
+      console.error("[generation store] Failed to save reference images:", e);
+    }
+  }
+
+  // 设置参考图片
+  function setReferenceImages(images: ReferenceImage[]) {
+    referenceImages.value = images;
+    saveReferenceImages();
+  }
+
+  // 添加参考图片
+  function addReferenceImage(image: ReferenceImage) {
+    referenceImages.value.push(image);
+    saveReferenceImages();
+  }
+
+  // 移除参考图片
+  function removeReferenceImage(id: string) {
+    referenceImages.value = referenceImages.value.filter(img => img.id !== id);
+    saveReferenceImages();
+  }
+
+  // 清空参考图片
+  function clearReferenceImages() {
+    referenceImages.value = [];
+    saveReferenceImages();
+  }
 
   // 计算属性
   const models = computed(() => {
@@ -241,6 +290,8 @@ export const useGenerationStore = defineStore("generation", () => {
     pendingImageUrl,
     // 配置
     config,
+    // 参考图片
+    referenceImages,
     // 方法
     setProvider,
     setModel,
@@ -264,5 +315,11 @@ export const useGenerationStore = defineStore("generation", () => {
     retryDownloadSuccess,
     retryDownloadFailed,
     clearPendingImageUrl,
+    // 参考图片方法
+    loadReferenceImages,
+    setReferenceImages,
+    addReferenceImage,
+    removeReferenceImage,
+    clearReferenceImages,
   };
 });

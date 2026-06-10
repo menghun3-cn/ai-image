@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, onUnmounted } from "vue";
 import { useGenerationStore } from "@/stores/generation";
-import { generateImage, batchGenerateImages, optimizePrompt, loadConfig, openOutputDir, getProviderModels, retryDownloadImage, type ReferenceImage } from "@/lib/tauri";
+import { generateImage, batchGenerateImages, optimizePrompt, loadConfig, openOutputDir, getProviderModels, retryDownloadImage } from "@/lib/tauri";
 import { message } from "@tauri-apps/plugin-dialog";
 import { Wand2Icon, Loader2Icon, FolderOpenIcon, SparklesIcon, Maximize2Icon, XIcon, ListIcon, HelpCircleIcon, CheckCircle2Icon, DownloadIcon } from "lucide-vue-next";
 import { listen } from "@tauri-apps/api/event";
@@ -10,8 +10,11 @@ import ImageInput from "@/components/ImageInput.vue";
 
 const store = useGenerationStore();
 
-// 参考图片列表
-const referenceImages = ref<ReferenceImage[]>([]);
+// 参考图片列表 - 使用 store 中的持久化数据
+const referenceImages = computed({
+  get: () => store.referenceImages,
+  set: (value) => store.setReferenceImages(value),
+});
 
 // 图片 URL 缓存
 const imageUrlCache = ref<string | null>(null);
@@ -192,23 +195,26 @@ onMounted(async () => {
   try {
     const config = await loadConfig();
     store.setConfig(config);
-    
+
     // 加载当前提供商的动态模型列表
     await loadProviderModels(store.provider);
-    
+
     if (!store.model && currentModels.value.length > 0) {
       store.setModel(currentModels.value[0]);
     }
-    
+
     // 恢复上一次成功生成的图片显示
     if (store.resultImage && store.status === 'success') {
       imageUrlCache.value = await loadImageUrl(store.resultImage);
     }
-    
+
     // 如果正在生成中，恢复进度定时器
     if (store.isGenerating) {
       startProgressTimer();
     }
+
+    // 从 localStorage 加载参考图片
+    store.loadReferenceImages();
   } catch (e) {
     console.error("Failed to load config:", e);
   }

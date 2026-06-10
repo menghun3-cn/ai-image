@@ -127,6 +127,9 @@ onMounted(async () => {
   try {
     videoOutputDir.value = await getVideoOutputDir();
 
+    // 从 localStorage 加载参考图片
+    store.loadReferenceImages();
+
     // 如果页面刷新前有正在进行的生成，重置状态
     if (store.isGenerating) {
       store.generationFailed("生成被中断，请重新生成");

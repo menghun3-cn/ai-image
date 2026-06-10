@@ -37,6 +37,28 @@ export const useVideoGenerationStore = defineStore("videoGeneration", () => {
   const referenceImages = ref<ReferenceImage[]>([]);
   const isKeyframesMode = ref(false);
 
+  // 从 localStorage 加载参考图片
+  function loadReferenceImages() {
+    try {
+      const saved = localStorage.getItem("videoReferenceImages");
+      if (saved) {
+        referenceImages.value = JSON.parse(saved);
+      }
+    } catch (e) {
+      console.error("[videoGeneration store] Failed to load reference images:", e);
+      referenceImages.value = [];
+    }
+  }
+
+  // 保存参考图片到 localStorage
+  function saveReferenceImages() {
+    try {
+      localStorage.setItem("videoReferenceImages", JSON.stringify(referenceImages.value));
+    } catch (e) {
+      console.error("[videoGeneration store] Failed to save reference images:", e);
+    }
+  }
+
   // 视频参数
   const selectedDurationIndex = ref(1); // 默认5秒
   const selectedResolutionIndex = ref(0); // 默认1152x768
@@ -117,20 +139,24 @@ export const useVideoGenerationStore = defineStore("videoGeneration", () => {
 
   function setReferenceImages(images: ReferenceImage[]) {
     referenceImages.value = images;
+    saveReferenceImages();
   }
 
   function addReferenceImage(image: ReferenceImage) {
     if (referenceImages.value.length < 5) {
       referenceImages.value = [...referenceImages.value, image];
+      saveReferenceImages();
     }
   }
 
   function removeReferenceImage(id: string) {
     referenceImages.value = referenceImages.value.filter((img) => img.id !== id);
+    saveReferenceImages();
   }
 
   function clearReferenceImages() {
     referenceImages.value = [];
+    saveReferenceImages();
   }
 
   function setKeyframesMode(value: boolean) {
@@ -270,6 +296,7 @@ export const useVideoGenerationStore = defineStore("videoGeneration", () => {
     addReferenceImage,
     removeReferenceImage,
     clearReferenceImages,
+    loadReferenceImages,
     setKeyframesMode,
     setDurationPreset,
     setResolutionPreset,
