@@ -1,40 +1,26 @@
 <script setup lang="ts">
-import { ref, onMounted, computed, watch, onUnmounted } from "vue";
-import { generateVideo, getVideoOutputDir, openOutputDir, type VideoGenerationMode } from "@/lib/tauri";
+import { ref, onMounted, onUnmounted, watch } from "vue";
+import { generateVideo, getVideoOutputDir, openOutputDir } from "@/lib/tauri";
 import { readFile } from "@tauri-apps/plugin-fs";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/plugin-dialog";
-import { VideoIcon, Loader2Icon, FolderOpenIcon, PlayIcon, AlertCircleIcon, Settings2Icon, XIcon, InfoIcon, CheckCircleIcon, ImageIcon, UploadIcon, LinkIcon } from "lucide-vue-next";
+import { useVideoGenerationStore, durationPresets, resolutionPresets } from "@/stores/videoGeneration";
+import ImageInput from "@/components/ImageInput.vue";
+import {
+  VideoIcon,
+  Loader2Icon,
+  FolderOpenIcon,
+  AlertCircleIcon,
+  Settings2Icon,
+  XIcon,
+  InfoIcon,
+  CheckCircleIcon,
+} from "lucide-vue-next";
 
-// 从 localStorage 恢复状态
-const savedState = localStorage.getItem("videoGenerationState");
-const parsedState = savedState ? JSON.parse(savedState) : null;
+const store = useVideoGenerationStore();
 
-const prompt = ref(localStorage.getItem("lastVideoPrompt") || "");
-const isGenerating = ref(parsedState?.isGenerating || false);
-const generationStatus = ref<"idle" | "creating" | "processing" | "downloading" | "success" | "error">(parsedState?.generationStatus || "idle");
-const resultVideoPath = ref<string | null>(parsedState?.resultVideoPath || null);
-const errorMessage = ref<string | null>(parsedState?.errorMessage || null);
-const generationProgress = ref(parsedState?.generationProgress || 0);
+// 视频输出目录
 const videoOutputDir = ref("video");
-const showAdvanced = ref(false);
-
-// 保存状态到 localStorage
-function saveState() {
-  localStorage.setItem("videoGenerationState", JSON.stringify({
-    isGenerating: isGenerating.value,
-    generationStatus: generationStatus.value,
-    resultVideoPath: resultVideoPath.value,
-    errorMessage: errorMessage.value,
-    elapsedTime: elapsedTime.value,
-    startTime: startTime.value,
-    generationProgress: generationProgress.value,
-  }));
-}
-
-// 监听状态变化并保存
-watch([isGenerating, generationStatus, resultVideoPath, errorMessage], saveState, { deep: true });
 
 // Toast 通知
 interface Toast {
@@ -56,193 +42,11 @@ function showToast(type: "info" | "success" | "error", message: string, duration
 }
 
 function removeToast(id: number) {
-  const index = toasts.value.findIndex(t => t.id === id);
+  const index = toasts.value.findIndex((t) => t.id === id);
   if (index > -1) {
     toasts.value.splice(index, 1);
   }
 }
-
-// 生成时间统计
-const startTime = ref<number | null>(null);
-const elapsedTime = ref(0);
-const elapsedTimeFormatted = computed(() => {
-  const minutes = Math.floor(elapsedTime.value / 60);
-  const seconds = elapsedTime.value % 60;
-  return minutes > 0 ? `${minutes}分${seconds}秒` : `${seconds}秒`;
-});
-let timerInterval: ReturnType<typeof setInterval> | null = null;
-
-// 视频参数
-const width = ref(1152);
-const height = ref(768);
-const numFrames = ref(121);
-const frameRate = ref(24);
-const seed = ref<number | undefined>(undefined);
-const negativePrompt = ref("");
-
-// 图片管理 - 统一使用一个数组，支持本地路径和URL
-interface ImageItem {
-  id: string;
-  path: string; // 本地路径或URL
-  type: 'local' | 'url';
-  name: string;
-}
-const imageItems = ref<ImageItem[]>([]);
-const showUrlInput = ref(false);
-const urlInput = ref("");
-const isKeyframesMode = ref(false);
-
-// 计算当前生成模式
-const detectedMode = computed<VideoGenerationMode>(() => {
-  const count = imageItems.value.length;
-  if (count === 0) return "text";
-  if (count === 1) return "single";
-  if (isKeyframesMode.value) return "keyframes";
-  return "multi";
-});
-
-// 模式显示文本
-const modeDisplayText = computed(() => {
-  switch (detectedMode.value) {
-    case "text": return "文生视频";
-    case "single": return "单图生视频";
-    case "multi": return "多图生视频";
-    case "keyframes": return "关键帧模式";
-    default: return "文生视频";
-  }
-});
-
-// 预设时长选项 - 根据 Agnes API 文档: num_frames 必须满足 8n + 1 且 ≤ 441
-// 3秒: 81帧, 5秒: 121帧, 10秒: 241帧, 18秒: 441帧 (frame_rate=24)
-const durationPresets = [
-  { label: "3 秒", frames: 81, fps: 24 },
-  { label: "5 秒", frames: 121, fps: 24 },
-  { label: "10 秒", frames: 241, fps: 24 },
-  { label: "18 秒", frames: 441, fps: 24 },
-];
-
-const selectedDuration = ref(1);
-
-// 分辨率选项
-const resolutionPresets = [
-  { label: "1152 x 768 (16:9)", width: 1152, height: 768 },
-  { label: "768 x 1152 (9:16)", width: 768, height: 1152 },
-  { label: "1024 x 1024 (1:1)", width: 1024, height: 1024 },
-];
-
-const selectedResolution = ref(0);
-
-// 生成唯一ID
-function generateId(): string {
-  return Date.now().toString(36) + Math.random().toString(36).substr(2);
-}
-
-// 判断是否为URL
-function isUrl(str: string): boolean {
-  return str.startsWith('http://') || str.startsWith('https://') || str.startsWith('data:image/');
-}
-
-// 选择本地图片
-async function selectLocalImages() {
-  const selected = await open({
-    multiple: true,
-    filters: [
-      { name: "图片", extensions: ["png", "jpg", "jpeg", "webp", "gif"] },
-    ],
-  });
-  if (selected && Array.isArray(selected)) {
-    // 限制最多5张图片
-    const remainingSlots = 5 - imageItems.value.length;
-    const pathsToAdd = selected.slice(0, remainingSlots);
-    
-    pathsToAdd.forEach(path => {
-      imageItems.value.push({
-        id: generateId(),
-        path: path,
-        type: 'local',
-        name: path.split('\\').pop() || path.split('/').pop() || '图片'
-      });
-    });
-    
-    if (selected.length > remainingSlots) {
-      showToast("info", "最多只能选择5张图片", 3000);
-    }
-  } else if (selected && typeof selected === 'string') {
-    // 单选情况
-    if (imageItems.value.length < 5) {
-      const path = selected as string;
-      imageItems.value.push({
-        id: generateId(),
-        path: path,
-        type: 'local',
-        name: path.split('\\').pop() || path.split('/').pop() || '图片'
-      });
-    } else {
-      showToast("info", "最多只能选择5张图片", 3000);
-    }
-  }
-}
-
-// 添加URL图片
-function addUrlImage() {
-  const url = urlInput.value.trim();
-  if (!url) {
-    showToast("info", "请输入图片URL");
-    return;
-  }
-  
-  if (!isUrl(url)) {
-    showToast("error", "请输入有效的图片URL (http:// 或 https://)");
-    return;
-  }
-  
-  if (imageItems.value.length >= 5) {
-    showToast("info", "最多只能添加5张图片");
-    return;
-  }
-  
-  // 从URL提取文件名
-  let name = '网络图片';
-  try {
-    const urlObj = new URL(url);
-    const pathname = urlObj.pathname;
-    const filename = pathname.split('/').pop();
-    if (filename) {
-      name = decodeURIComponent(filename);
-    }
-  } catch {
-    // URL解析失败，使用默认名称
-  }
-  
-  imageItems.value.push({
-    id: generateId(),
-    path: url,
-    type: 'url',
-    name: name
-  });
-  
-  urlInput.value = "";
-  showUrlInput.value = false;
-  showToast("success", "图片URL已添加");
-}
-
-// 移除图片
-function removeImage(id: string) {
-  const index = imageItems.value.findIndex(item => item.id === id);
-  if (index > -1) {
-    imageItems.value.splice(index, 1);
-  }
-}
-
-// 清空所有图片
-function clearAllImages() {
-  imageItems.value = [];
-}
-
-// 计算实际视频时长
-const videoDuration = computed(() => {
-  return (numFrames.value / frameRate.value).toFixed(1);
-});
 
 // 视频 URL（用于预览）
 const videoBlobUrl = ref<string | null>(null);
@@ -254,14 +58,14 @@ async function loadVideo(path: string | null) {
     videoBlobUrl.value = null;
     return;
   }
-  
+
   try {
     const assetUrl = convertFileSrc(path);
-    
-    if (videoBlobUrl.value && videoBlobUrl.value.startsWith('blob:')) {
+
+    if (videoBlobUrl.value && videoBlobUrl.value.startsWith("blob:")) {
       URL.revokeObjectURL(videoBlobUrl.value);
     }
-    
+
     videoBlobUrl.value = assetUrl;
   } catch (error) {
     console.error("[Video] 加载失败:", error);
@@ -275,16 +79,16 @@ async function loadVideoBlob(path: string | null) {
     videoBlobUrl.value = null;
     return;
   }
-  
+
   try {
     const fileData = await readFile(path);
-    const blob = new Blob([fileData], { type: 'video/mp4' });
+    const blob = new Blob([fileData], { type: "video/mp4" });
     const url = URL.createObjectURL(blob);
-    
-    if (videoBlobUrl.value && videoBlobUrl.value.startsWith('blob:')) {
+
+    if (videoBlobUrl.value && videoBlobUrl.value.startsWith("blob:")) {
       URL.revokeObjectURL(videoBlobUrl.value);
     }
-    
+
     videoBlobUrl.value = url;
   } catch (error) {
     console.error("[Video] Blob 方案失败:", error);
@@ -294,54 +98,61 @@ async function loadVideoBlob(path: string | null) {
 }
 
 // 监听视频路径变化
-watch(resultVideoPath, (newPath) => {
-  loadVideo(newPath);
-}, { immediate: true });
+watch(
+  () => store.resultVideoPath,
+  (newPath) => {
+    loadVideo(newPath);
+  },
+  { immediate: true }
+);
 
 // 视频加载错误处理
 function handleVideoError(e: Event) {
   const videoEl = e.target as HTMLVideoElement;
   const error = videoEl.error;
-  
-  if (error && error.code === 4 && resultVideoPath.value) {
-    loadVideoBlob(resultVideoPath.value);
+
+  if (error && error.code === 4 && store.resultVideoPath) {
+    loadVideoBlob(store.resultVideoPath);
     return;
   }
-  
+
   showToast("error", "视频播放失败，请尝试打开目录查看");
 }
 
 // 监听进度事件
 let unlistenProgress: UnlistenFn | null = null;
+let progressTimer: ReturnType<typeof setInterval> | null = null;
 
 onMounted(async () => {
   try {
     videoOutputDir.value = await getVideoOutputDir();
-    
-    if (isGenerating.value) {
-      isGenerating.value = false;
-      generationStatus.value = "error";
-      errorMessage.value = "生成被中断，请重新生成";
-      saveState();
+
+    // 如果页面刷新前有正在进行的生成，重置状态
+    if (store.isGenerating) {
+      store.generationFailed("生成被中断，请重新生成");
     }
-    
+
+    // 监听进度事件
     unlistenProgress = await listen("video-generation-progress", (event) => {
       const payload = event.payload as { status: string; progress: number };
-      generationProgress.value = payload.progress;
-      
+      store.updateProgress(payload.progress);
+
       const statusUpper = payload.status.toUpperCase();
       if (statusUpper === "COMPLETED" || statusUpper === "SUCCESS") {
-        generationStatus.value = "downloading";
+        store.setStatus("downloading");
       } else if (statusUpper === "FAILED" || statusUpper === "ERROR") {
-        generationStatus.value = "error";
+        store.setStatus("error");
       } else if (statusUpper === "QUEUED" || statusUpper === "PENDING") {
-        if (generationStatus.value === "creating") {
-          generationStatus.value = "processing";
+        if (store.status === "creating") {
+          store.setStatus("processing");
         }
       } else {
-        generationStatus.value = "processing";
+        store.setStatus("processing");
       }
     });
+
+    // 启动进度定时器
+    startProgressTimer();
   } catch (e) {
     console.error("初始化失败:", e);
   }
@@ -351,119 +162,70 @@ onUnmounted(() => {
   if (unlistenProgress) {
     unlistenProgress();
   }
+  stopProgressTimer();
 });
 
-function updatePrompt(value: string) {
-  prompt.value = value;
-  localStorage.setItem("lastVideoPrompt", value);
+// 启动进度更新定时器
+function startProgressTimer() {
+  stopProgressTimer();
+  progressTimer = setInterval(() => {
+    if (store.isGenerating) {
+      store.updateElapsedTime();
+    }
+  }, 1000);
 }
 
-function applyDurationPreset(index: number) {
-  selectedDuration.value = index;
-  const preset = durationPresets[index];
-  numFrames.value = preset.frames;
-  frameRate.value = preset.fps;
+// 停止进度更新定时器
+function stopProgressTimer() {
+  if (progressTimer) {
+    clearInterval(progressTimer);
+    progressTimer = null;
+  }
 }
 
-function applyResolutionPreset(index: number) {
-  selectedResolution.value = index;
-  const preset = resolutionPresets[index];
-  width.value = preset.width;
-  height.value = preset.height;
+// 处理图片数量超限
+function handleMaxImagesReached() {
+  showToast("info", "最多只能选择5张图片", 3000);
 }
 
+// 生成视频
 async function handleGenerate() {
-  if (!prompt.value.trim()) {
+  if (!store.canGenerate) {
     showToast("info", "请输入视频描述提示词");
     return;
   }
 
-  isGenerating.value = true;
-  generationStatus.value = "creating";
-  errorMessage.value = null;
-  resultVideoPath.value = null;
-  generationProgress.value = 0;
-
-  startTime.value = Date.now();
-  elapsedTime.value = 0;
-  timerInterval = setInterval(() => {
-    if (startTime.value) {
-      elapsedTime.value = Math.floor((Date.now() - startTime.value) / 1000);
-    }
-  }, 1000);
+  store.startGeneration();
 
   try {
-    generationStatus.value = "processing";
+    store.setStatus("processing");
 
     // 构建生成选项
-    const options: any = {
-      prompt: prompt.value.trim(),
-      output_dir: videoOutputDir.value,
-      width: width.value,
-      height: height.value,
-      num_frames: numFrames.value,
-      frame_rate: frameRate.value,
-      seed: seed.value,
-      negative_prompt: negativePrompt.value || undefined,
-      image_mode: detectedMode.value,
-    };
-
-    // 根据图片数量添加参数
-    const imageCount = imageItems.value.length;
-    if (imageCount === 1) {
-      options.image = imageItems.value[0].path;
-    } else if (imageCount >= 2) {
-      options.images = imageItems.value.map(item => item.path);
-    }
+    const options = store.getGenerationOptions();
+    options.output_dir = videoOutputDir.value;
 
     const result = await generateVideo(options);
 
     if (result.success && result.video_path) {
-      generationStatus.value = "success";
-      resultVideoPath.value = result.video_path;
-      showToast("success", `视频生成成功！耗时: ${elapsedTimeFormatted.value}`, 5000);
+      store.generationSuccess(result.video_path);
+      showToast("success", `视频生成成功！耗时: ${store.formattedElapsedTime}`, 5000);
     } else {
-      generationStatus.value = "error";
-      errorMessage.value = result.error || "生成失败";
-      showToast("error", errorMessage.value);
+      store.generationFailed(result.error || "生成失败");
+      showToast("error", result.error || "生成失败");
     }
   } catch (e) {
-    generationStatus.value = "error";
-    errorMessage.value = String(e);
-    showToast("error", String(e));
-  } finally {
-    isGenerating.value = false;
-    if (timerInterval) {
-      clearInterval(timerInterval);
-      timerInterval = null;
-    }
+    const errorMsg = String(e);
+    store.generationFailed(errorMsg);
+    showToast("error", errorMsg);
   }
 }
 
+// 打开输出目录
 async function handleOpenOutputDir() {
   try {
     await openOutputDir(videoOutputDir.value);
   } catch (e) {
     showToast("error", String(e));
-  }
-}
-
-function getStatusText() {
-  const timeStr = elapsedTime.value > 0 ? ` (${elapsedTimeFormatted.value})` : "";
-  const progressStr = isGenerating.value ? ` ${generationProgress.value}%` : "";
-  switch (generationStatus.value) {
-    case "creating":
-      return `创建任务中...${timeStr}`;
-    case "processing":
-      return `视频生成中${progressStr}（这可能需要几分钟）...${timeStr}`;
-    case "downloading":
-      return `下载视频中...${timeStr}`;
-    case "success":
-      return `生成成功！总耗时: ${elapsedTimeFormatted.value}`;
-    case "error":
-      return `生成失败${timeStr}`;
-    default:
-      return "";
   }
 }
 </script>
@@ -480,17 +242,14 @@ function getStatusText() {
             'flex items-center gap-3 px-4 py-3 rounded-lg shadow-lg border min-w-[300px] max-w-[500px]',
             toast.type === 'success' && 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200',
             toast.type === 'error' && 'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200',
-            toast.type === 'info' && 'bg-blue-50 border-blue-200 text-blue-800 dark:bg-blue-900/20 dark:border-blue-800 dark:text-blue-200'
+            toast.type === 'info' && 'bg-blue-50 border-blue-200 text-blue-800 dark:bg-blue-900/20 dark:border-blue-800 dark:text-blue-200',
           ]"
         >
           <CheckCircleIcon v-if="toast.type === 'success'" class="w-5 h-5 flex-shrink-0" />
           <AlertCircleIcon v-else-if="toast.type === 'error'" class="w-5 h-5 flex-shrink-0" />
           <InfoIcon v-else class="w-5 h-5 flex-shrink-0" />
           <span class="flex-1 text-sm">{{ toast.message }}</span>
-          <button
-            @click="removeToast(toast.id)"
-            class="p-1 hover:bg-black/5 dark:hover:bg-white/10 rounded transition-colors"
-          >
+          <button @click="removeToast(toast.id)" class="p-1 hover:bg-black/5 dark:hover:bg-white/10 rounded transition-colors">
             <XIcon class="w-4 h-4" />
           </button>
         </div>
@@ -503,9 +262,7 @@ function getStatusText() {
         <VideoIcon class="w-6 h-6" />
         生成视频
       </h1>
-      <p class="text-muted-foreground mt-1">
-        使用 Agnes AI 将文字描述或图片转换为视频
-      </p>
+      <p class="text-muted-foreground mt-1">使用 Agnes AI 将文字描述或图片转换为视频</p>
     </div>
 
     <!-- Main Content -->
@@ -516,164 +273,102 @@ function getStatusText() {
         <div class="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
           <div class="flex items-center gap-2">
             <span class="text-sm text-muted-foreground">当前模式:</span>
-            <span class="text-sm font-medium px-2 py-1 bg-primary/10 text-primary rounded">
-              {{ modeDisplayText }}
-            </span>
+            <span class="text-sm font-medium px-2 py-1 bg-primary/10 text-primary rounded"> {{ store.modeDisplayText }} </span>
           </div>
           <span class="text-xs text-muted-foreground">
-            {{ imageItems.length === 0 ? '未选择图片' : `已选择 ${imageItems.length} 张图片` }}
+            {{ store.referenceImages.length === 0 ? "未选择图片" : `已选择 ${store.referenceImages.length} 张图片` }}
           </span>
-        </div>
-
-        <!-- Image Upload Section -->
-        <div class="flex flex-col gap-2">
-          <div class="flex items-center justify-between">
-            <label class="text-sm font-medium">参考图片 (可选)</label>
-            <div class="flex items-center gap-2">
-              <!-- 关键帧模式开关 (仅当图片>=2时显示) -->
-              <label v-if="imageItems.length >= 2" class="flex items-center gap-2 text-sm cursor-pointer">
-                <input
-                  v-model="isKeyframesMode"
-                  type="checkbox"
-                  class="rounded border"
-                  :disabled="isGenerating"
-                />
-                <span class="text-muted-foreground">关键帧模式</span>
-              </label>
-              <button
-                v-if="imageItems.length > 0"
-                @click="clearAllImages"
-                class="text-xs text-destructive hover:underline"
-                :disabled="isGenerating"
-              >
-                清空全部
-              </button>
-            </div>
-          </div>
-
-          <!-- Image List -->
-          <div v-if="imageItems.length > 0" class="space-y-2">
-            <div
-              v-for="(item, index) in imageItems"
-              :key="item.id"
-              class="flex items-center gap-3 border rounded-lg p-3"
-            >
-              <span class="w-6 h-6 rounded-full bg-primary/10 text-primary text-xs flex items-center justify-center font-medium">
-                {{ index + 1 }}
-              </span>
-              <ImageIcon v-if="item.type === 'local'" class="w-5 h-5 text-muted-foreground" />
-              <LinkIcon v-else class="w-5 h-5 text-blue-500" />
-              <span class="flex-1 text-sm truncate" :title="item.path">
-                {{ item.name }}
-              </span>
-              <span v-if="item.type === 'url'" class="text-xs text-blue-500">URL</span>
-              <button
-                @click="removeImage(item.id)"
-                class="p-1.5 hover:bg-destructive/10 text-destructive rounded transition-colors"
-                :disabled="isGenerating"
-              >
-                <XIcon class="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-
-          <!-- Add Image Buttons -->
-          <div v-if="imageItems.length < 5" class="flex gap-2">
-            <button
-              @click="selectLocalImages"
-              class="flex-1 border-2 border-dashed border-muted-foreground/25 rounded-lg p-4 flex items-center justify-center gap-2 hover:border-primary/50 hover:bg-muted/50 transition-colors"
-              :class="{ 'pointer-events-none opacity-50': isGenerating }"
-            >
-              <UploadIcon class="w-5 h-5 text-muted-foreground" />
-              <span class="text-sm text-muted-foreground">选择本地图片</span>
-            </button>
-            <button
-              @click="showUrlInput = !showUrlInput"
-              class="flex-1 border-2 border-dashed border-muted-foreground/25 rounded-lg p-4 flex items-center justify-center gap-2 hover:border-primary/50 hover:bg-muted/50 transition-colors"
-              :class="{ 'pointer-events-none opacity-50': isGenerating }"
-            >
-              <LinkIcon class="w-5 h-5 text-muted-foreground" />
-              <span class="text-sm text-muted-foreground">添加图片URL</span>
-            </button>
-          </div>
-
-          <!-- URL Input -->
-          <div v-if="showUrlInput" class="flex gap-2">
-            <input
-              v-model="urlInput"
-              type="text"
-              placeholder="输入图片URL (http:// 或 https://)"
-              class="flex-1 px-3 py-2 rounded-lg border bg-background text-sm"
-              @keyup.enter="addUrlImage"
-            />
-            <button
-              @click="addUrlImage"
-              class="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm hover:bg-primary/90"
-            >
-              添加
-            </button>
-          </div>
-
-          <!-- Mode Hint -->
-          <p class="text-xs text-muted-foreground">
-            <span v-if="imageItems.length === 0">不选择图片将使用文生视频模式</span>
-            <span v-else-if="imageItems.length === 1">已选择1张图片，将使用单图生视频模式</span>
-            <span v-else-if="imageItems.length >= 2">
-              已选择{{ imageItems.length }}张图片，将使用{{ isKeyframesMode ? '关键帧' : '多图' }}模式
-            </span>
-          </p>
         </div>
 
         <!-- Prompt Input -->
         <div class="flex flex-col gap-2">
           <label class="text-sm font-medium">视频描述</label>
           <textarea
-            v-model="prompt"
-            @input="updatePrompt(($event.target as HTMLTextAreaElement).value)"
-            :placeholder="imageItems.length === 0
-              ? '描述你想要生成的视频内容，例如：一只可爱的猫咪在草地上玩耍...'
-              : '描述视频动画效果，例如：The woman slowly turns around and looks back at the camera...'"
-            class="min-h-[120px] p-4 rounded-lg border bg-background resize-none focus:outline-none focus:ring-2 focus:ring-primary"
-            :disabled="isGenerating"
+            :value="store.prompt"
+            @input="(e) => store.setPrompt((e.target as HTMLTextAreaElement).value)"
+            rows="4"
+            class="w-full px-3 py-2 border rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-primary"
+            placeholder="描述你想要生成的视频内容..."
+            :disabled="store.isGenerating"
           />
         </div>
 
-        <!-- Duration Presets -->
+        <!-- Image Upload Section - 使用 ImageInput 组件 -->
         <div class="flex flex-col gap-2">
-          <label class="text-sm font-medium">视频时长 (约 {{ videoDuration }} 秒)</label>
-          <div class="flex gap-2">
+          <div class="flex items-center justify-between">
+            <label class="text-sm font-medium">参考图片 (可选)</label>
+            <div class="flex items-center gap-2">
+              <!-- 关键帧模式开关 (仅当图片>=2时显示) -->
+              <label v-if="store.referenceImages.length >= 2" class="flex items-center gap-2 text-sm cursor-pointer">
+                <input v-model="store.isKeyframesMode" type="checkbox" class="rounded border" :disabled="store.isGenerating" />
+                <span class="text-muted-foreground">关键帧模式</span>
+              </label>
+              <button
+                v-if="store.referenceImages.length > 0"
+                @click="store.clearReferenceImages"
+                class="text-xs text-destructive hover:underline"
+                :disabled="store.isGenerating"
+              >
+                清空全部
+              </button>
+            </div>
+          </div>
+
+          <!-- 使用 ImageInput 组件 -->
+          <ImageInput
+            v-model="store.referenceImages"
+            :disabled="store.isGenerating"
+            :max-images="5"
+            @max-reached="handleMaxImagesReached"
+          />
+
+          <!-- Mode Hint -->
+          <p class="text-xs text-muted-foreground">
+            <span v-if="store.referenceImages.length === 1">已选择1张图片，将使用单图生视频模式</span>
+            <span v-else-if="store.referenceImages.length >= 2">
+              已选择 {{ store.referenceImages.length }} 张图片，将使用{{ store.isKeyframesMode ? "关键帧" : "多图" }}模式
+            </span>
+          </p>
+        </div>
+
+        <!-- Duration Selection -->
+        <div class="flex flex-col gap-2">
+          <label class="text-sm font-medium">
+            视频时长 (约{{ store.videoDuration }}秒)
+          </label>
+          <div class="flex gap-2 flex-wrap">
             <button
               v-for="(preset, index) in durationPresets"
               :key="index"
-              @click="applyDurationPreset(index)"
+              @click="store.setDurationPreset(index)"
+              :disabled="store.isGenerating"
               :class="[
-                'px-4 py-2 rounded-lg border text-sm transition-colors',
-                selectedDuration === index
+                'px-4 py-2 rounded-lg text-sm border transition-colors',
+                store.selectedDurationIndex === index
                   ? 'bg-primary text-primary-foreground border-primary'
-                  : 'bg-background hover:bg-muted'
+                  : 'hover:bg-muted',
               ]"
-              :disabled="isGenerating"
             >
               {{ preset.label }}
             </button>
           </div>
         </div>
 
-        <!-- Resolution Presets -->
+        <!-- Resolution Selection -->
         <div class="flex flex-col gap-2">
           <label class="text-sm font-medium">分辨率</label>
           <div class="flex gap-2 flex-wrap">
             <button
               v-for="(preset, index) in resolutionPresets"
               :key="index"
-              @click="applyResolutionPreset(index)"
+              @click="store.setResolutionPreset(index)"
+              :disabled="store.isGenerating"
               :class="[
-                'px-4 py-2 rounded-lg border text-sm transition-colors',
-                selectedResolution === index
+                'px-4 py-2 rounded-lg text-sm border transition-colors',
+                store.selectedResolutionIndex === index
                   ? 'bg-primary text-primary-foreground border-primary'
-                  : 'bg-background hover:bg-muted'
+                  : 'hover:bg-muted',
               ]"
-              :disabled="isGenerating"
             >
               {{ preset.label }}
             </button>
@@ -681,75 +376,43 @@ function getStatusText() {
         </div>
 
         <!-- Advanced Settings -->
-        <div class="border rounded-lg">
+        <div class="border rounded-lg overflow-hidden">
           <button
-            @click="showAdvanced = !showAdvanced"
+            @click="store.setShowAdvanced(!store.showAdvanced)"
             class="w-full px-4 py-3 flex items-center justify-between hover:bg-muted/50 transition-colors"
+            :disabled="store.isGenerating"
           >
             <div class="flex items-center gap-2">
               <Settings2Icon class="w-4 h-4" />
               <span class="text-sm font-medium">高级设置</span>
             </div>
-            <span class="text-muted-foreground">{{ showAdvanced ? '▼' : '▶' }}</span>
+            <span class="text-muted-foreground">{{ store.showAdvanced ? "收起" : "展开" }}</span>
           </button>
-          
-          <div v-if="showAdvanced" class="p-4 border-t space-y-4">
-            <!-- Frame Rate -->
-            <div class="flex items-center gap-4">
-              <label class="text-sm w-20">帧率 (FPS)</label>
-              <input
-                v-model.number="frameRate"
-                type="number"
-                min="1"
-                max="60"
-                class="flex-1 px-3 py-2 rounded-lg border bg-background"
-                :disabled="isGenerating"
-              />
-              <span class="text-sm text-muted-foreground w-16">1-60</span>
-            </div>
 
-            <!-- Num Frames -->
-            <div class="flex items-center gap-4">
-              <label class="text-sm w-20">帧数</label>
-              <input
-                v-model.number="numFrames"
-                type="number"
-                min="1"
-                max="441"
-                class="flex-1 px-3 py-2 rounded-lg border bg-background"
-                :disabled="isGenerating"
-              />
-              <span class="text-sm text-muted-foreground w-16">≤441</span>
-            </div>
-
+          <div v-if="store.showAdvanced" class="px-4 pb-4 space-y-4 border-t">
             <!-- Seed -->
-            <div class="flex items-center gap-4">
-              <label class="text-sm w-20">随机种子</label>
+            <div class="pt-4">
+              <label class="block text-sm font-medium mb-2">随机种子 (可选)</label>
               <input
-                v-model.number="seed"
+                :value="store.seed"
+                @input="(e) => store.setSeed((e.target as HTMLInputElement).value ? parseInt((e.target as HTMLInputElement).value) : undefined)"
                 type="number"
-                placeholder="随机"
-                class="flex-1 px-3 py-2 rounded-lg border bg-background"
-                :disabled="isGenerating"
+                placeholder="留空则随机生成"
+                class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                :disabled="store.isGenerating"
               />
-              <button
-                @click="seed = undefined"
-                class="text-sm text-muted-foreground hover:text-foreground w-16"
-                :disabled="isGenerating"
-              >
-                清除
-              </button>
             </div>
 
             <!-- Negative Prompt -->
-            <div class="flex flex-col gap-2">
-              <label class="text-sm">负向提示词</label>
-              <input
-                v-model="negativePrompt"
-                type="text"
-                placeholder="描述需要避免的内容..."
-                class="px-3 py-2 rounded-lg border bg-background"
-                :disabled="isGenerating"
+            <div>
+              <label class="block text-sm font-medium mb-2">反向提示词 (可选)</label>
+              <textarea
+                :value="store.negativePrompt"
+                @input="(e) => store.setNegativePrompt((e.target as HTMLTextAreaElement).value)"
+                rows="2"
+                class="w-full px-3 py-2 border rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-primary"
+                placeholder="描述你不希望出现在视频中的内容..."
+                :disabled="store.isGenerating"
               />
             </div>
           </div>
@@ -758,68 +421,93 @@ function getStatusText() {
         <!-- Generate Button -->
         <button
           @click="handleGenerate"
-          :disabled="isGenerating || !prompt.trim()"
-          class="px-6 py-3 bg-primary text-primary-foreground rounded-lg font-medium flex items-center justify-center gap-2 hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          :disabled="!store.canGenerate"
+          class="w-full py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 flex items-center justify-center gap-2"
         >
-          <Loader2Icon v-if="isGenerating" class="w-5 h-5 animate-spin" />
+          <Loader2Icon v-if="store.isGenerating" class="w-5 h-5 animate-spin" />
           <VideoIcon v-else class="w-5 h-5" />
-          {{ isGenerating ? "生成中..." : `生成视频 (${modeDisplayText})` }}
+          {{ store.isGenerating ? store.statusText : `生成视频 (${store.modeDisplayText})` }}
         </button>
 
-        <!-- Status -->
-        <div v-if="generationStatus !== 'idle'" class="p-4 rounded-lg bg-muted">
-          <div class="flex items-center gap-2">
-            <Loader2Icon v-if="isGenerating" class="w-5 h-5 animate-spin text-primary" />
-            <AlertCircleIcon v-else-if="generationStatus === 'error'" class="w-5 h-5 text-destructive" />
-            <PlayIcon v-else-if="generationStatus === 'success'" class="w-5 h-5 text-green-500" />
-            <span :class="{
-              'text-primary': isGenerating,
-              'text-destructive': generationStatus === 'error',
-              'text-green-500': generationStatus === 'success'
-            }">
-              {{ getStatusText() }}
-            </span>
+        <!-- Error Message -->
+        <div v-if="store.errorMessage" class="p-3 bg-red-50 border border-red-200 rounded-lg text-red-800 text-sm">
+          <div class="flex items-start gap-2">
+            <AlertCircleIcon class="w-5 h-5 flex-shrink-0 mt-0.5" />
+            <div>
+              <p class="font-medium">生成失败</p>
+              <p class="mt-1">{{ store.errorMessage }}</p>
+            </div>
           </div>
-          <p v-if="errorMessage" class="text-sm text-destructive mt-2">
-            {{ errorMessage }}
-          </p>
-        </div>
-
-        <!-- Output Directory -->
-        <div class="flex items-center gap-2 text-sm text-muted-foreground">
-          <span>输出目录: {{ videoOutputDir }}</span>
-          <button
-            @click="handleOpenOutputDir"
-            class="p-1 hover:bg-muted rounded transition-colors"
-            title="打开目录"
-          >
-            <FolderOpenIcon class="w-4 h-4" />
-          </button>
         </div>
       </div>
 
-      <!-- Right Panel - Result -->
+      <!-- Right Panel - Preview -->
       <div class="w-[480px] flex flex-col gap-4">
-        <!-- Video Preview -->
-        <div class="flex-1 border rounded-lg overflow-hidden bg-black flex items-center justify-center relative">
+        <div class="flex-1 bg-black rounded-lg overflow-hidden relative">
+          <!-- Video Player -->
           <video
             v-if="videoBlobUrl"
             ref="videoPlayer"
             :src="videoBlobUrl"
             controls
-            class="max-w-full max-h-full"
+            class="w-full h-full object-contain"
             @error="handleVideoError"
           />
-          <div v-else class="text-center p-8">
-            <VideoIcon class="w-16 h-16 text-muted-foreground mx-auto mb-4" />
-            <p class="text-muted-foreground">生成的视频将在这里显示</p>
+
+          <!-- Empty State -->
+          <div v-else class="w-full h-full flex flex-col items-center justify-center text-white/60">
+            <VideoIcon class="w-16 h-16 mb-4 opacity-50" />
+            <p class="text-sm">生成的视频将在这里显示</p>
+          </div>
+
+          <!-- Loading Overlay -->
+          <div
+            v-if="store.isGenerating"
+            class="absolute inset-0 bg-black/80 flex flex-col items-center justify-center text-white"
+          >
+            <Loader2Icon class="w-12 h-12 animate-spin mb-4" />
+            <p class="text-lg font-medium">{{ store.statusText }}</p>
+            <div v-if="store.progress > 0" class="mt-4 w-64 h-2 bg-white/20 rounded-full overflow-hidden">
+              <div class="h-full bg-primary transition-all duration-300" :style="{ width: `${store.progress}%` }" />
+            </div>
           </div>
         </div>
 
-        <!-- Video Info -->
-        <div v-if="resultVideoPath" class="p-4 border rounded-lg space-y-2">
-          <p class="text-sm font-medium">视频信息</p>
-          <p class="text-xs text-muted-foreground break-all">/{{ videoOutputDir }}/{{ resultVideoPath.split(/[\\/]/).pop() }}</p>
+        <!-- Video Info & Actions -->
+        <div v-if="store.resultVideoPath" class="bg-muted/50 rounded-lg p-4 space-y-3">
+          <div class="flex items-center gap-2 text-sm">
+            <CheckCircleIcon class="w-4 h-4 text-green-500" />
+            <span class="font-medium">生成成功</span>
+            <span class="text-muted-foreground">({{ store.formattedElapsedTime }})</span>
+          </div>
+
+          <div class="text-xs text-muted-foreground break-all">{{ store.resultVideoPath }}</div>
+
+          <div class="flex gap-2">
+            <button
+              @click="handleOpenOutputDir"
+              class="flex-1 flex items-center justify-center gap-2 px-4 py-2 border rounded-lg hover:bg-muted transition-colors text-sm"
+            >
+              <FolderOpenIcon class="w-4 h-4" />
+              打开目录
+            </button>
+          </div>
+        </div>
+
+        <!-- Video Parameters Info -->
+        <div class="bg-muted/30 rounded-lg p-4 text-sm space-y-2">
+          <h4 class="font-medium flex items-center gap-2">
+            <InfoIcon class="w-4 h-4" />
+            当前参数
+          </h4>
+          <div class="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+            <div>模式: {{ store.modeDisplayText }}</div>
+            <div>时长: {{ store.videoDuration }}秒</div>
+            <div>分辨率: {{ store.width }}×{{ store.height }}</div>
+            <div>帧率: {{ store.frameRate }}fps</div>
+            <div>帧数: {{ store.numFrames }}</div>
+            <div>图片数: {{ store.referenceImages.length }}</div>
+          </div>
         </div>
       </div>
     </div>
@@ -827,14 +515,17 @@ function getStatusText() {
 </template>
 
 <style scoped>
+/* Toast 动画 */
 .toast-enter-active,
 .toast-leave-active {
   transition: all 0.3s ease;
 }
+
 .toast-enter-from {
   opacity: 0;
   transform: translateX(100%);
 }
+
 .toast-leave-to {
   opacity: 0;
   transform: translateX(100%);

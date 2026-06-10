@@ -14,10 +14,12 @@ interface ReferenceImage {
 const props = defineProps<{
   modelValue: ReferenceImage[];
   disabled?: boolean;
+  maxImages?: number;
 }>();
 
 const emit = defineEmits<{
   (e: "update:modelValue", value: ReferenceImage[]): void;
+  (e: "maxReached"): void;
 }>();
 
 const isDragging = ref(false);
@@ -29,6 +31,9 @@ const images = computed({
   get: () => props.modelValue,
   set: (value) => emit("update:modelValue", value),
 });
+
+const maxImages = computed(() => props.maxImages ?? Infinity);
+const canAddMore = computed(() => images.value.length < maxImages.value);
 
 // 生成唯一 ID
 function generateId(): string {
@@ -60,7 +65,7 @@ function getMimeType(path: string): string {
 
 // 添加本地图片
 async function addLocalImage() {
-  if (props.disabled) return;
+  if (props.disabled || !canAddMore.value) return;
 
   try {
     const selected = await open({
@@ -76,8 +81,15 @@ async function addLocalImage() {
     if (!selected) return;
 
     const files = Array.isArray(selected) ? selected : [selected];
+    let addedCount = 0;
 
     for (const filePath of files) {
+      // 检查是否已达到最大数量
+      if (images.value.length >= maxImages.value) {
+        emit("maxReached");
+        break;
+      }
+
       try {
         const data = await readFile(filePath);
         const mimeType = getMimeType(filePath);
@@ -92,6 +104,7 @@ async function addLocalImage() {
         };
 
         images.value = [...images.value, newImage];
+        addedCount++;
       } catch (e) {
         console.error("读取图片失败:", filePath, e);
       }
@@ -103,7 +116,12 @@ async function addLocalImage() {
 
 // 显示 URL 输入框
 function showUrlInputBox() {
-  if (props.disabled) return;
+  if (props.disabled || !canAddMore.value) {
+    if (!canAddMore.value) {
+      emit("maxReached");
+    }
+    return;
+  }
   showUrlInput.value = true;
   setTimeout(() => {
     urlInputRef.value?.focus();
@@ -114,6 +132,12 @@ function showUrlInputBox() {
 async function addUrlImage() {
   if (!urlInput.value.trim()) {
     showUrlInput.value = false;
+    return;
+  }
+
+  // 检查是否已达到最大数量
+  if (images.value.length >= maxImages.value) {
+    emit("maxReached");
     return;
   }
 
@@ -184,12 +208,18 @@ async function handleDrop(e: DragEvent) {
   e.stopPropagation();
   isDragging.value = false;
 
-  if (props.disabled) return;
+  if (props.disabled || !canAddMore.value) return;
 
   const files = e.dataTransfer?.files;
   if (!files || files.length === 0) return;
 
   for (const file of Array.from(files)) {
+    // 检查是否已达到最大数量
+    if (images.value.length >= maxImages.value) {
+      emit("maxReached");
+      break;
+    }
+
     // 只处理图片文件
     if (!file.type.startsWith("image/")) continue;
 
@@ -295,10 +325,10 @@ function handleUrlKeydown(e: KeyboardEvent) {
     </div>
 
     <!-- 添加按钮区域 -->
-    <div class="flex items-center gap-3">
+    <div class="flex items-center gap-3 flex-wrap">
       <button
         @click="addLocalImage"
-        :disabled="disabled"
+        :disabled="disabled || !canAddMore"
         class="flex items-center gap-2 px-3 py-2 border rounded-lg hover:bg-muted disabled:opacity-50 transition-colors"
         title="添加本地图片"
       >
@@ -308,7 +338,7 @@ function handleUrlKeydown(e: KeyboardEvent) {
 
       <button
         @click="showUrlInputBox"
-        :disabled="disabled || showUrlInput"
+        :disabled="disabled || showUrlInput || !canAddMore"
         class="flex items-center gap-2 px-3 py-2 border rounded-lg hover:bg-muted disabled:opacity-50 transition-colors"
         title="添加图片链接"
       >
@@ -319,6 +349,11 @@ function handleUrlKeydown(e: KeyboardEvent) {
       <span class="text-xs text-muted-foreground ml-2">
         <ImageIcon class="w-3 h-3 inline mr-1" />
         支持拖拽图片到此处
+      </span>
+
+      <!-- 最大数量提示 -->
+      <span v-if="maxImages !== Infinity" class="text-xs text-muted-foreground">
+        {{ images.length }}/{{ maxImages }}
       </span>
     </div>
 
