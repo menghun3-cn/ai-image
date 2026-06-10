@@ -178,8 +178,7 @@ jobs:
             $changelog += "`n"
           }
           
-          $changelog += "---`n`n"
-          $changelog += "详细说明请参考 [发布说明](../../blob/main/ai-image-v2-docs/08-发布说明.md)"
+
           
           # 输出到文件
           $changelog | Out-File -FilePath "CHANGELOG_RELEASE.md" -Encoding UTF8
