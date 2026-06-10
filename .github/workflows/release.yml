@@ -191,9 +191,11 @@ jobs:
           # 输出到文件
           $changelog | Out-File -FilePath "CHANGELOG_RELEASE.md" -Encoding UTF8
           
-          # 设置输出变量（多行处理）
-          $changelogEscaped = $changelog -replace '`n', '%0A' -replace '`r', ''
-          Write-Output "changelog=$changelogEscaped" >> $env:GITHUB_OUTPUT
+          # 设置输出变量（GitHub Actions 多行输出格式）
+          $delimiter = "EOF_$(Get-Random)"
+          "changelog<<$delimiter" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding UTF8
+          $changelog | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding UTF8
+          "$delimiter" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding UTF8
           
           Write-Output "Generated Changelog:"
           Get-Content "CHANGELOG_RELEASE.md"
