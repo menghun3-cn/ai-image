@@ -74,3 +74,11 @@ pub struct VideoInfo {
     pub name: String,
     pub time: i64,
 }
+
+// 重新下载相关类型
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RetryDownloadResult {
+    pub success: bool,
+    pub image_path: Option<String>,
+    pub error: Option<String>,
+}

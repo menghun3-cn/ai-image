@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, onUnmounted } from "vue";
 import { useGenerationStore } from "@/stores/generation";
-import { generateImage, batchGenerateImages, optimizePrompt, loadConfig, openOutputDir, getProviderModels, type ReferenceImage } from "@/lib/tauri";
+import { generateImage, batchGenerateImages, optimizePrompt, loadConfig, openOutputDir, getProviderModels, retryDownloadImage, type ReferenceImage } from "@/lib/tauri";
 import { message } from "@tauri-apps/plugin-dialog";
-import { Wand2Icon, Loader2Icon, FolderOpenIcon, SparklesIcon, Maximize2Icon, XIcon, ListIcon, HelpCircleIcon, CheckCircle2Icon } from "lucide-vue-next";
+import { Wand2Icon, Loader2Icon, FolderOpenIcon, SparklesIcon, Maximize2Icon, XIcon, ListIcon, HelpCircleIcon, CheckCircle2Icon, DownloadIcon } from "lucide-vue-next";
 import { listen } from "@tauri-apps/api/event";
 import { readFile } from "@tauri-apps/plugin-fs";
 import ImageInput from "@/components/ImageInput.vue";
@@ -276,11 +276,56 @@ async function handleGenerate() {
     if (result.success && result.image_path) {
       store.generationSuccess(result.image_path);
     } else {
-      store.generationFailed(result.error || "生成失败");
+      // 检查是否是网络错误，如果是则保存图片URL
+      const errorMsg = result.error || "生成失败";
+      const imageUrl = extractImageUrlFromError(errorMsg);
+      store.generationFailed(errorMsg, imageUrl);
     }
   } catch (e) {
     stopProgressTimer();
-    store.generationFailed(e instanceof Error ? e.message : "未知错误");
+    const errorMsg = e instanceof Error ? e.message : "未知错误";
+    const imageUrl = extractImageUrlFromError(errorMsg);
+    store.generationFailed(errorMsg, imageUrl);
+  }
+}
+
+// 从错误信息中提取图片URL
+function extractImageUrlFromError(errorMsg: string): string | undefined {
+  // 匹配错误信息中的URL，如：error sending request for url (https://...)
+  const urlMatch = errorMsg.match(/https?:\/\/[^\s\)]+/);
+  return urlMatch ? urlMatch[0] : undefined;
+}
+
+// 处理重新下载
+async function handleRetryDownload() {
+  if (!store.pendingImageUrl) return;
+
+  store.startRetryDownload();
+
+  try {
+    const result = await retryDownloadImage({
+      image_url: store.pendingImageUrl,
+      output_dir: store.outputDir,
+    });
+
+    if (result.success && result.image_path) {
+      store.retryDownloadSuccess(result.image_path);
+      // 加载并显示图片
+      imageUrlCache.value = await loadImageUrl(result.image_path);
+    } else {
+      store.retryDownloadFailed(result.error || "重新下载失败");
+      await message("重新下载失败: " + (result.error || "未知错误"), { 
+        title: "错误", 
+        kind: "error" 
+      });
+    }
+  } catch (e) {
+    const errorMsg = e instanceof Error ? e.message : "未知错误";
+    store.retryDownloadFailed(errorMsg);
+    await message("重新下载失败: " + errorMsg, { 
+      title: "错误", 
+      kind: "error" 
+    });
   }
 }
 
@@ -605,7 +650,26 @@ function showBatchImageModal(imagePath: string) {
 
     <!-- Single Error -->
     <div v-if="!store.isBatchMode && store.status === 'error'" class="mb-6 p-4 bg-destructive/10 text-destructive rounded-lg">
-      {{ store.error }}
+      <div class="flex flex-col gap-3">
+        <p>{{ store.error }}</p>
+        <!-- 显示重新下载按钮（仅当有待下载的图片URL时） -->
+        <div v-if="store.pendingImageUrl" class="flex items-center gap-3">
+          <button
+            @click="handleRetryDownload"
+            :disabled="store.isRetryingDownload"
+            class="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"
+          >
+            <Loader2Icon v-if="store.isRetryingDownload" class="w-4 h-4 animate-spin" />
+            <DownloadIcon v-else class="w-4 h-4" />
+            {{ store.isRetryingDownload ? "下载中..." : "重新下载" }}
+          </button>
+          <span class="text-xs text-muted-foreground">图片已生成但下载失败，可点击重试</span>
+        </div>
+        <!-- 重新下载的错误提示 -->
+        <p v-if="store.retryDownloadError" class="text-sm text-destructive">
+          重新下载失败: {{ store.retryDownloadError }}
+        </p>
+      </div>
     </div>
 
     <!-- Single Result - 只在生成成功时显示 -->

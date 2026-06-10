@@ -158,24 +158,56 @@ impl ImageProvider for AgnesProvider {
             .and_then(|item| item.get("url"))
             .and_then(|u| u.as_str())
         {
-            let image_response = client
-                .get(url)
-                .send()
-                .await
-                .map_err(ProviderError::Network)?;
+            // 图片下载重试机制（最多3次）
+            let mut image_data: Option<Vec<u8>> = None;
+            let mut last_error = None;
+            for attempt in 0..3 {
+                if attempt > 0 {
+                    crate::log_message(&format!(
+                        "[Agnes] 图片下载失败，第 {} 次重试...",
+                        attempt
+                    ));
+                    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+                }
 
-            if !image_response.status().is_success() {
-                return Err(ProviderError::Api {
-                    status: image_response.status().as_u16(),
-                    message: "下载图片失败".to_string(),
-                });
+                match client
+                    .get(url)
+                    .send()
+                    .await
+                {
+                    Ok(response) => {
+                        if response.status().is_success() {
+                            match response.bytes().await {
+                                Ok(bytes) => {
+                                    crate::log_message(&format!(
+                                        "[Agnes] 图片下载成功，URL: {}",
+                                        &url[..url.len().min(80)]
+                                    ));
+                                    image_data = Some(bytes.to_vec());
+                                    break;
+                                }
+                                Err(e) => {
+                                    last_error = Some(format!("读取图片数据失败: {}", e));
+                                    continue;
+                                }
+                            }
+                        } else {
+                            last_error = Some(format!("HTTP 错误: {}", response.status()));
+                            continue;
+                        }
+                    }
+                    Err(e) => {
+                        last_error = Some(format!("网络错误: {}", e));
+                        continue;
+                    }
+                }
             }
-
-            image_response
-                .bytes()
-                .await
-                .map_err(|e| ProviderError::Network(e))?
-                .to_vec()
+            
+            image_data.ok_or_else(|| {
+                ProviderError::Unknown(
+                    last_error.unwrap_or_else(|| "图片下载失败，已重试3次".to_string())
+                )
+            })?
         } else {
             return Err(ProviderError::InvalidResponse(
                 "响应中未找到图片数据".to_string(),

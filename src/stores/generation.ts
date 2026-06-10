@@ -32,6 +32,11 @@ export const useGenerationStore = defineStore("generation", () => {
   const optimizeResult = ref<OptimizeResult | null>(null);
   const optimizeError = ref<string | null>(null);
 
+  // 重新下载状态
+  const isRetryingDownload = ref(false);
+  const retryDownloadError = ref<string | null>(null);
+  const pendingImageUrl = ref<string | null>(null); // 待重新下载的图片URL
+
   // 配置
   const config = ref<AppConfig | null>(null);
 
@@ -123,10 +128,40 @@ export const useGenerationStore = defineStore("generation", () => {
     }
   }
 
-  function generationFailed(errorMsg: string) {
+  function generationFailed(errorMsg: string, imageUrl?: string) {
     isGenerating.value = false;
     status.value = "error";
     error.value = errorMsg;
+    // 如果是网络错误，保存图片URL以便重新下载
+    if (imageUrl && errorMsg.includes("网络错误")) {
+      pendingImageUrl.value = imageUrl;
+    }
+  }
+
+  // 重新下载相关方法
+  function startRetryDownload() {
+    isRetryingDownload.value = true;
+    retryDownloadError.value = null;
+  }
+
+  function retryDownloadSuccess(imagePath: string) {
+    isRetryingDownload.value = false;
+    status.value = "success";
+    resultImage.value = imagePath;
+    error.value = null;
+    pendingImageUrl.value = null;
+    if (generationStartTime.value) {
+      generationDuration.value = Date.now() - generationStartTime.value;
+    }
+  }
+
+  function retryDownloadFailed(errorMsg: string) {
+    isRetryingDownload.value = false;
+    retryDownloadError.value = errorMsg;
+  }
+
+  function clearPendingImageUrl() {
+    pendingImageUrl.value = null;
   }
 
   function resetState() {
@@ -200,6 +235,10 @@ export const useGenerationStore = defineStore("generation", () => {
     isOptimizing,
     optimizeResult,
     optimizeError,
+    // 重新下载
+    isRetryingDownload,
+    retryDownloadError,
+    pendingImageUrl,
     // 配置
     config,
     // 方法
@@ -220,5 +259,10 @@ export const useGenerationStore = defineStore("generation", () => {
     addBatchResult,
     finishBatchGeneration,
     resetBatchState,
+    // 重新下载方法
+    startRetryDownload,
+    retryDownloadSuccess,
+    retryDownloadFailed,
+    clearPendingImageUrl,
   };
 });

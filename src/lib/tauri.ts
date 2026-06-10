@@ -294,3 +294,26 @@ export async function openLogDir(): Promise<void> {
 export async function getLogContent(): Promise<string> {
   return invoke<string>("get_log_content");
 }
+
+// 重新下载图片相关
+export interface RetryDownloadOptions {
+  image_url: string;
+  output_dir: string;
+  filename?: string;
+}
+
+export interface RetryDownloadResult {
+  success: boolean;
+  image_path?: string;
+  error?: string;
+}
+
+export async function retryDownloadImage(
+  options: RetryDownloadOptions
+): Promise<RetryDownloadResult> {
+  return invoke<RetryDownloadResult>("retry_download_image", { 
+    imageUrl: options.image_url,
+    outputDir: options.output_dir,
+    filename: options.filename
+  });
+}

@@ -85,6 +85,7 @@ fn main() {
             commands::get_default_storage_paths,
             commands::open_log_dir,
             commands::get_log_content,
+            commands::retry_download_image,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
