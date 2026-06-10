@@ -179,13 +179,6 @@ jobs:
           }
           
           $changelog += "---`n`n"
-          $changelog += "### 安装包`n"
-          $changelog += "- Windows NSIS 安装程序 (推荐)`n"
-          $changelog += "- Windows MSI 安装包`n`n"
-          $changelog += "### 系统要求`n"
-          $changelog += "- Windows 10/11 64位`n"
-          $changelog += "- 4GB RAM`n"
-          $changelog += "- 500MB 可用磁盘空间`n`n"
           $changelog += "详细说明请参考 [发布说明](../../blob/main/ai-image-v2-docs/08-发布说明.md)"
           
           # 输出到文件
