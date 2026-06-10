@@ -49,13 +49,31 @@ impl ImageProvider for AgnesProvider {
             "1024x1024".to_string()
         };
 
+        // 判断是否为图生图模式
+        let is_img2img = options.image.is_some();
+
         // 构建请求体
-        let mut request_body = serde_json::json!({
-            "model": model,
-            "prompt": &options.prompt,
-            "n": 1,
-            "size": size,
-        });
+        let mut request_body = if is_img2img {
+            // 图生图模式 - response_format 放在 extra_body 中
+            serde_json::json!({
+                "model": model,
+                "prompt": &options.prompt,
+                "n": 1,
+                "size": size,
+                "extra_body": {
+                    "response_format": "b64_json"
+                }
+            })
+        } else {
+            // 文生图模式
+            serde_json::json!({
+                "model": model,
+                "prompt": &options.prompt,
+                "n": 1,
+                "size": size,
+                "return_base64": true
+            })
+        };
 
         // 处理以图生图
         if let Some(image_data) = &options.image {
@@ -66,15 +84,17 @@ impl ImageProvider for AgnesProvider {
             ));
             crate::log_message(&format!("[Agnes] 以图生图模式，处理参考图片"));
             match self.process_image_input(image_data).await {
-                Ok((_, base64_data)) => {
-                    // 使用纯 base64 数据
-                    request_body["image"] = serde_json::json!(base64_data);
+                Ok((full_data, _)) => {
+                    // 使用 extra_body.image 数组格式
+                    // 支持 data:image/xxx;base64,xxx 或 https://xxx 格式
+                    // 图生图模式下 extra_body 已存在，需要合并
+                    let extra_body = request_body["extra_body"].as_object_mut().unwrap();
+                    extra_body.insert("image".to_string(), serde_json::json!([full_data]));
                     crate::log_message(&format!(
-                        "[debug-point agnes-provider-request] request_has_image=true, base64_len={}, base64_prefix={}",
-                        base64_data.len(),
-                        base64_data.chars().take(30).collect::<String>()
+                        "[debug-point agnes-provider-request] request_has_image=true, image_format=extra_body.image[0], data_prefix={}",
+                        full_data.chars().take(50).collect::<String>()
                     ));
-                    crate::log_message(&format!("[Agnes] 参考图片处理成功"));
+                    crate::log_message(&format!("[Agnes] 参考图片处理成功，使用 extra_body.image 格式"));
                 }
                 Err(e) => {
                     crate::log_message(&format!("[Agnes] 参考图片处理失败: {}", e));
@@ -203,11 +223,12 @@ impl ImageProvider for AgnesProvider {
                 }
             }
             
-            image_data.ok_or_else(|| {
-                ProviderError::Unknown(
-                    last_error.unwrap_or_else(|| "图片下载失败，已重试3次".to_string())
-                )
-            })?
+            // 图片下载失败，返回包含图片URL的错误，以便前端可以重新下载
+            let error_msg = last_error.unwrap_or_else(|| "图片下载失败，已重试3次".to_string());
+            return Err(ProviderError::DownloadFailed {
+                url: url.to_string(),
+                message: error_msg,
+            });
         } else {
             return Err(ProviderError::InvalidResponse(
                 "响应中未找到图片数据".to_string(),
@@ -480,7 +501,7 @@ impl AgnesProvider {
         crate::log_message(&format!("[Agnes Video] API Key: {}", key_preview));
 
         let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(120))
+            .timeout(Duration::from_secs(600))
             .build()
             .map_err(|e| ProviderError::Network(e))?;
 

@@ -19,6 +19,9 @@ pub enum ProviderError {
 
     #[error("未知错误: {0}")]
     Unknown(String),
+
+    #[error("图片下载失败 [{url}]: {message}")]
+    DownloadFailed { url: String, message: String },
 }
 
 pub type Result<T> = std::result::Result<T, ProviderError>;

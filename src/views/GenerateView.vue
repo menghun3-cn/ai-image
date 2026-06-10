@@ -290,10 +290,17 @@ async function handleGenerate() {
 }
 
 // 从错误信息中提取图片URL
+// 只有当错误是"图片下载失败"类型时才返回URL，其他错误返回 undefined
 function extractImageUrlFromError(errorMsg: string): string | undefined {
-  // 匹配错误信息中的URL，如：error sending request for url (https://...)
-  const urlMatch = errorMsg.match(/https?:\/\/[^\s\)]+/);
-  return urlMatch ? urlMatch[0] : undefined;
+  // 检查是否是图片下载失败的错误
+  // 格式: "图片下载失败 [`https://xxx`]: 错误信息" 或 "图片下载失败 [https://xxx]: 错误信息"
+  if (!errorMsg.includes("图片下载失败")) {
+    return undefined;
+  }
+  
+  // 匹配方括号中的URL（支持带反引号和不带反引号的情况）
+  const urlMatch = errorMsg.match(/图片下载失败\s*\[`?([^\]`]+)`?\]/);
+  return urlMatch ? urlMatch[1].trim() : undefined;
 }
 
 // 处理重新下载
