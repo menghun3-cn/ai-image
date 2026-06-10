@@ -1,10 +1,14 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, nextTick } from "vue";
-import { getImages, deleteImage, openOutputDir, loadConfig } from "@/lib/tauri";
+import { useGalleryStore } from "@/stores/gallery";
+import { openOutputDir, loadConfig } from "@/lib/tauri";
 import Dialog from "@/components/Dialog.vue";
 import { TrashIcon, FolderOpenIcon, RefreshCwIcon, ImageIcon, ChevronLeftIcon, ChevronRightIcon, XIcon, Loader2Icon } from "lucide-vue-next";
 import { formatTime } from "@/lib/utils";
 import { readFile } from "@tauri-apps/plugin-fs";
+
+// Store
+const store = useGalleryStore();
 
 // 对话框状态
 const dialog = ref({
@@ -48,21 +52,29 @@ function handleDialogCancel() {
   dialogResolve = null;
 }
 
-interface ImageItem {
-  path: string;
-  name: string;
-  time: number;
-  url?: string;
-  loaded?: boolean;
-  loading?: boolean;
-}
+// 本地状态
+const outputDir = ref("images");
+const isLoadingMore = ref(false);
+const selectedImage = ref<typeof store.displayedImages[0] | null>(null);
+const selectedIndex = ref<number>(-1);
+const imageGridRef = ref<HTMLElement | null>(null);
 
-// 缓存图片 URL
-const imageUrlCache = new Map<string, string>();
+// 从 Store 获取状态
+const allImages = computed(() => store.allImages);
+const displayedImages = computed(() => store.displayedImages);
+const isLoading = computed(() => store.isLoading);
+const loadedCount = computed(() => store.displayedCount);
+const hasMoreImages = computed(() => store.hasMoreImages);
 
 // 加载配置
 const INITIAL_LOAD_COUNT = 24; // 初始加载数量
 const CHUNK_SIZE = 12; // 每批加载数量
+
+// 缓存图片 URL
+const imageUrlCache = new Map<string, string>();
+
+// IntersectionObserver 实例
+let imageObserver: IntersectionObserver | null = null;
 
 // 辅助函数：将 Uint8Array 转换为 Base64（浏览器兼容）
 function arrayBufferToBase64(buffer: Uint8Array): string {
@@ -105,24 +117,6 @@ async function loadImageUrl(path: string): Promise<string> {
   }
 }
 
-const allImages = ref<ImageItem[]>([]); // 所有图片元数据
-const displayedImages = ref<ImageItem[]>([]); // 已加载显示的图片
-const outputDir = ref("images");
-const isLoading = ref(false);
-const isLoadingMore = ref(false);
-const loadedCount = ref(0);
-const selectedImage = ref<ImageItem | null>(null);
-const selectedIndex = ref<number>(-1);
-const imageGridRef = ref<HTMLElement | null>(null);
-
-// IntersectionObserver 实例
-let imageObserver: IntersectionObserver | null = null;
-
-// 计算属性：是否还有更多图片需要加载
-const hasMoreImages = computed(() => {
-  return loadedCount.value < allImages.value.length;
-});
-
 onMounted(async () => {
   // 从配置加载输出目录
   try {
@@ -137,6 +131,8 @@ onMounted(async () => {
   } catch (e) {
     console.error("Failed to load config:", e);
   }
+  
+  // 加载图片（带缓存）
   await loadImages();
 });
 
@@ -148,6 +144,33 @@ onUnmounted(() => {
     imageObserver = null;
   }
 });
+
+// 加载图片（带缓存）
+async function loadImages(forceRefresh: boolean = false) {
+  const dir = outputDir.value || "images";
+  
+  // 调用 Store 加载，返回 true 表示使用了缓存
+  const usedCache = await store.loadImages(dir, forceRefresh);
+  
+  if (usedCache) {
+    console.log("[Gallery] 使用缓存，无需重新加载");
+    // 恢复 IntersectionObserver
+    nextTick(() => {
+      initIntersectionObserver();
+    });
+  } else {
+    // 新加载的数据，需要加载初始批次
+    await loadMoreImages(INITIAL_LOAD_COUNT);
+    
+    // 初始化 IntersectionObserver
+    initIntersectionObserver();
+    
+    // 如果还有更多图片，在后台继续加载
+    if (hasMoreImages.value) {
+      loadRemainingInBackground();
+    }
+  }
+}
 
 // 初始化 IntersectionObserver 用于可视区域优先加载
 function initIntersectionObserver() {
@@ -188,57 +211,18 @@ function initIntersectionObserver() {
 }
 
 // 加载单个图片
-async function loadImageItem(imageItem: ImageItem) {
+async function loadImageItem(imageItem: typeof store.displayedImages[0]) {
   if (imageItem.loading || imageItem.url) return;
   
-  imageItem.loading = true;
+  store.setImageLoading(imageItem.path, true);
+  
   try {
-    imageItem.url = await loadImageUrl(imageItem.path);
-    imageItem.loaded = true;
+    const url = await loadImageUrl(imageItem.path);
+    store.setImageUrl(imageItem.path, url);
   } catch (e) {
     console.error("[Gallery] Failed to load image item:", e);
   } finally {
-    imageItem.loading = false;
-  }
-}
-
-async function loadImages() {
-  isLoading.value = true;
-  loadedCount.value = 0;
-  displayedImages.value = [];
-  allImages.value = [];
-  
-  try {
-    // 确保 outputDir 有值
-    const dir = outputDir.value || "images";
-    console.log("[Gallery] Loading images from:", dir);
-    const loadedImages = await getImages(dir);
-    console.log("[Gallery] Total images found:", loadedImages.length);
-    
-    // 保存所有图片元数据（不含 URL）
-    allImages.value = loadedImages.map(img => ({
-      ...img,
-      url: undefined,
-      loaded: false,
-      loading: false,
-    }));
-    
-    // 初始加载前 N 张
-    await loadMoreImages(INITIAL_LOAD_COUNT);
-    
-    console.log("[Gallery] Initial images loaded:", displayedImages.value.length);
-    
-    // 初始化 IntersectionObserver
-    initIntersectionObserver();
-    
-    // 如果还有更多图片，在后台继续加载
-    if (hasMoreImages.value) {
-      loadRemainingInBackground();
-    }
-  } catch (e) {
-    console.error("Failed to load images:", e);
-  } finally {
-    isLoading.value = false;
+    store.setImageLoading(imageItem.path, false);
   }
 }
 
@@ -255,18 +239,17 @@ async function loadMoreImages(count: number = CHUNK_SIZE) {
   
   try {
     // 并行加载这一批图片
-    const loadedBatch = await Promise.all(
-      batch.map(async (img) => ({
-        ...img,
-        url: await loadImageUrl(img.path),
-        loaded: true,
-        loading: false,
-      }))
+    await Promise.all(
+      batch.map(async (img) => {
+        if (!img.url) {
+          const url = await loadImageUrl(img.path);
+          store.setImageUrl(img.path, url);
+        }
+      })
     );
     
-    // 添加到已显示列表
-    displayedImages.value.push(...loadedBatch);
-    loadedCount.value = end;
+    // 更新 Store 中的显示数量
+    store.loadMore(end - start);
     
     console.log(`[Gallery] Loaded batch: ${start} - ${end}, total loaded: ${loadedCount.value}`);
     
@@ -306,14 +289,14 @@ async function handleDelete(path: string) {
   if (!confirmed) return;
 
   try {
-    await deleteImage(path);
     // 如果删除的是当前预览的图片，关闭预览
     if (selectedImage.value?.path === path) {
       closeImageModal();
     }
-    // 从缓存中移除
+    // 从本地缓存中移除
     imageUrlCache.delete(path);
-    await loadImages();
+    // 从 Store 中删除
+    await store.removeImage(path);
   } catch (e) {
     await showDialog({
       title: "错误",
@@ -331,7 +314,7 @@ async function handleOpenDir() {
   }
 }
 
-function openImageModal(image: ImageItem, index: number) {
+function openImageModal(image: typeof store.displayedImages[0], index: number) {
   selectedImage.value = image;
   selectedIndex.value = index;
   addKeyListener();
@@ -399,7 +382,7 @@ function removeKeyListener() {
           打开目录
         </button>
         <button
-          @click="loadImages"
+          @click="() => loadImages(true)"
           :disabled="isLoading"
           class="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"
         >
@@ -497,64 +480,36 @@ function removeKeyListener() {
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm"
       @click="closeImageModal"
     >
-      <div class="relative max-w-[90vw] max-h-[90vh] p-4" @click.stop>
-        <img
-          v-if="selectedImage?.url"
-          :src="selectedImage.url"
-          alt="Preview"
-          class="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl"
-        />
-        <div
-          v-else
-          class="w-[80vw] h-[60vh] bg-muted rounded-lg flex items-center justify-center"
-        >
-          <Loader2Icon class="w-12 h-12 animate-spin text-muted-foreground" />
-        </div>
-        
-        <!-- 图片信息 -->
-        <div class="absolute bottom-6 left-1/2 -translate-x-1/2 px-4 py-2 rounded-lg bg-black/50 text-white text-sm">
-          <span>{{ selectedImage.name }}</span>
-          <span class="mx-2">|</span>
-          <span>{{ selectedIndex + 1 }} / {{ displayedImages.length }}</span>
-        </div>
-
-        <!-- 关闭按钮 -->
-        <button
-          @click="closeImageModal"
-          class="absolute top-6 right-6 w-10 h-10 rounded-full bg-black/50 hover:bg-black/70 text-white flex items-center justify-center transition-colors"
-        >
-          <XIcon class="w-5 h-5" />
-        </button>
-
-        <!-- 删除按钮 -->
-        <button
-          @click.stop="handleDelete(selectedImage.path)"
-          class="absolute top-6 right-20 w-10 h-10 rounded-full bg-red-500/80 hover:bg-red-500 text-white flex items-center justify-center transition-colors"
-        >
-          <TrashIcon class="w-4 h-4" />
-        </button>
-
-        <!-- 上一张按钮 -->
-        <button
-          v-if="selectedIndex > 0"
-          @click.stop="goToPreviousImage"
-          class="absolute left-4 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-black/50 hover:bg-black/70 text-white flex items-center justify-center transition-colors"
-        >
-          <ChevronLeftIcon class="w-6 h-6" />
-        </button>
-
-        <!-- 下一张按钮 -->
-        <button
-          v-if="selectedIndex < displayedImages.length - 1"
-          @click.stop="goToNextImage"
-          class="absolute right-4 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-black/50 hover:bg-black/70 text-white flex items-center justify-center transition-colors"
-        >
-          <ChevronRightIcon class="w-6 h-6" />
-        </button>
-      </div>
+      <button
+        @click.stop="closeImageModal"
+        class="absolute top-4 right-4 p-2 text-white hover:bg-white/10 rounded-full"
+      >
+        <XIcon class="w-6 h-6" />
+      </button>
+      
+      <button
+        v-if="selectedIndex > 0"
+        @click.stop="goToPreviousImage"
+        class="absolute left-4 top-1/2 -translate-y-1/2 p-2 text-white hover:bg-white/10 rounded-full"
+      >
+        <ChevronLeftIcon class="w-8 h-8" />
+      </button>
+      
+      <button
+        v-if="selectedIndex < displayedImages.length - 1"
+        @click.stop="goToNextImage"
+        class="absolute right-4 top-1/2 -translate-y-1/2 p-2 text-white hover:bg-white/10 rounded-full"
+      >
+        <ChevronRightIcon class="w-8 h-8" />
+      </button>
+      
+      <img
+        :src="selectedImage.url"
+        class="max-w-[90vw] max-h-[90vh] object-contain"
+        @click.stop
+      />
     </div>
 
-    <!-- 对话框组件 -->
     <Dialog
       :show="dialog.show"
       :title="dialog.title"

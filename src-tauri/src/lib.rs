@@ -9,6 +9,7 @@ pub mod commands;
 pub mod config;
 pub mod config_store;
 pub mod error;
+pub mod gallery_cache;
 pub mod providers;
 pub mod types;
 

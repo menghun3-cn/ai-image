@@ -1,72 +1,35 @@
+use crate::gallery_cache::GALLERY_CACHE;
 use crate::types::ImageInfo;
 use std::path::Path;
 
 #[tauri::command]
 pub fn get_images(output_dir: String) -> Result<Vec<ImageInfo>, String> {
-    // 如果是相对路径，拼接项目根目录
-    let path = Path::new(&output_dir);
-    let full_path = if path.is_relative() {
-        crate::get_project_root().join(output_dir)
-    } else {
-        path.to_path_buf()
-    };
+    // 使用缓存管理器获取图片列表
+    // 如果目录没有变化，直接返回缓存数据
+    GALLERY_CACHE.get_images(&output_dir)
+}
 
-    // 记录日志便于调试
-    crate::log_message(&format!(
-        "[Gallery] 查找图片目录: {}",
-        full_path.to_string_lossy()
-    ));
+#[tauri::command]
+pub fn refresh_images(output_dir: String) -> Result<Vec<ImageInfo>, String> {
+    // 强制刷新图片列表（清除缓存后重新加载）
+    GALLERY_CACHE.clear_image_cache();
+    GALLERY_CACHE.get_images(&output_dir)
+}
 
-    if !full_path.exists() {
-        crate::log_message(&format!(
-            "[Gallery] 目录不存在: {}",
-            full_path.to_string_lossy()
-        ));
-        return Ok(vec![]);
-    }
-
-    let mut images = vec![];
-
-    if let Ok(entries) = std::fs::read_dir(&full_path) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if let Some(ext) = path.extension() {
-                let ext = ext.to_string_lossy().to_lowercase();
-                if ext == "png" || ext == "jpg" || ext == "jpeg" || ext == "webp" {
-                    if let Ok(metadata) = entry.metadata() {
-                        if let Ok(modified) = metadata.modified() {
-                            let time = modified
-                                .duration_since(std::time::UNIX_EPOCH)
-                                .unwrap_or_default()
-                                .as_secs() as i64;
-
-                            images.push(ImageInfo {
-                                path: path.to_string_lossy().to_string(),
-                                name: path
-                                    .file_name()
-                                    .unwrap_or_default()
-                                    .to_string_lossy()
-                                    .to_string(),
-                                time,
-                            });
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // 按时间倒序排列
-    images.sort_by(|a, b| b.time.cmp(&a.time));
-
-    crate::log_message(&format!("[Gallery] 找到 {} 张图片", images.len()));
-
-    Ok(images)
+#[tauri::command]
+pub fn get_directory_mtime(output_dir: String) -> (u64, usize) {
+    // 获取目录的修改时间（mtime）和文件数量
+    // 用于前端快速检测目录是否有变化
+    // 返回 (mtime_seconds, file_count)
+    GALLERY_CACHE.get_directory_mtime(&output_dir)
 }
 
 #[tauri::command]
 pub fn delete_image(path: String) -> Result<(), String> {
-    std::fs::remove_file(&path).map_err(|e| format!("删除文件失败: {}", e))
+    std::fs::remove_file(&path).map_err(|e| format!("删除文件失败: {}", e))?;
+    // 删除文件后清除缓存，下次加载时会重新扫描
+    GALLERY_CACHE.clear_image_cache();
+    Ok(())
 }
 
 #[tauri::command]

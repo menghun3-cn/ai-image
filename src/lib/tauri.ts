@@ -124,6 +124,16 @@ export async function getImages(outputDir: string): Promise<ImageInfo[]> {
   return invoke<ImageInfo[]>("get_images", { outputDir });
 }
 
+export async function refreshImages(outputDir: string): Promise<ImageInfo[]> {
+  return invoke<ImageInfo[]>("refresh_images", { outputDir });
+}
+
+// 获取目录的修改时间（mtime）和文件数量
+// 用于前端快速检测目录是否有变化，返回 [mtime_seconds, file_count]
+export async function getDirectoryMtime(outputDir: string): Promise<[number, number]> {
+  return invoke<[number, number]>("get_directory_mtime", { outputDir });
+}
+
 export async function deleteImage(path: string): Promise<void> {
   return invoke("delete_image", { path });
 }
@@ -234,6 +244,10 @@ export interface VideoInfo {
 
 export async function getVideos(outputDir: string): Promise<VideoInfo[]> {
   return invoke<VideoInfo[]>("get_videos", { outputDir });
+}
+
+export async function refreshVideos(outputDir: string): Promise<VideoInfo[]> {
+  return invoke<VideoInfo[]>("refresh_videos", { outputDir });
 }
 
 export async function deleteVideo(path: string): Promise<void> {

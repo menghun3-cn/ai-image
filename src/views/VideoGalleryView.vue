@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, nextTick } from "vue";
-import { getVideos, deleteVideo, openVideoDir, loadConfig } from "@/lib/tauri";
+import { useVideoGalleryStore } from "@/stores/videoGallery";
+import { openVideoDir, loadConfig } from "@/lib/tauri";
 import Dialog from "@/components/Dialog.vue";
 import { TrashIcon, FolderOpenIcon, RefreshCwIcon, VideoIcon, XIcon, PlayIcon, Loader2Icon } from "lucide-vue-next";
 import { formatTime } from "@/lib/utils";
-import { convertFileSrc } from "@tauri-apps/api/core";
 import { readFile } from "@tauri-apps/plugin-fs";
+
+// Store
+const store = useVideoGalleryStore();
 
 // 对话框状态
 const dialog = ref({
@@ -49,39 +52,28 @@ function handleDialogCancel() {
   dialogResolve = null;
 }
 
-interface VideoItem {
-  path: string;
-  name: string;
-  time: number;
-  url?: string;
-  blobUrl?: string;
-  loaded?: boolean;
-  loading?: boolean;
-}
-
-// 加载配置
-const INITIAL_LOAD_COUNT = 12; // 初始加载数量（视频比图片大，数量减少）
-const CHUNK_SIZE = 6; // 每批加载数量
-
-const allVideos = ref<VideoItem[]>([]); // 所有视频元数据
-const displayedVideos = ref<VideoItem[]>([]); // 已加载显示的视频
+// 本地状态
 const outputDir = ref("video");
-const isLoading = ref(false);
 const isLoadingMore = ref(false);
-const loadedCount = ref(0);
-const selectedVideo = ref<VideoItem | null>(null);
+const selectedVideo = ref<typeof store.displayedVideos[0] | null>(null);
 const isPlaying = ref(false);
 const videoPlayerRef = ref<HTMLVideoElement | null>(null);
 const previewBlobUrl = ref<string | null>(null);
 const videoGridRef = ref<HTMLElement | null>(null);
 
+// 从 Store 获取状态
+const allVideos = computed(() => store.allVideos);
+const displayedVideos = computed(() => store.displayedVideos);
+const isLoading = computed(() => store.isLoading);
+const loadedCount = computed(() => store.displayedCount);
+const hasMoreVideos = computed(() => store.hasMoreVideos);
+
+// 加载配置
+const INITIAL_LOAD_COUNT = 12; // 初始加载数量（视频比图片大，数量减少）
+const CHUNK_SIZE = 6; // 每批加载数量
+
 // IntersectionObserver 实例
 let videoObserver: IntersectionObserver | null = null;
-
-// 计算属性：是否还有更多视频需要加载
-const hasMoreVideos = computed(() => {
-  return loadedCount.value < allVideos.value.length;
-});
 
 onMounted(async () => {
   // 从配置加载输出目录
@@ -97,16 +89,13 @@ onMounted(async () => {
   } catch (e) {
     console.error("Failed to load config:", e);
   }
+  
+  // 加载视频（带缓存）
   await loadVideos();
 });
 
 onUnmounted(() => {
-  // 清理 blob URL
-  displayedVideos.value.forEach(video => {
-    if (video.blobUrl) {
-      URL.revokeObjectURL(video.blobUrl);
-    }
-  });
+  // 清理预览用的 blob URL
   if (previewBlobUrl.value) {
     URL.revokeObjectURL(previewBlobUrl.value);
   }
@@ -115,7 +104,50 @@ onUnmounted(() => {
     videoObserver.disconnect();
     videoObserver = null;
   }
+  removeKeyListener();
 });
+
+// 加载视频（带缓存）
+async function loadVideos(forceRefresh: boolean = false) {
+  const dir = outputDir.value || "video";
+  
+  // 调用 Store 加载，返回 true 表示使用了缓存
+  const usedCache = await store.loadVideos(dir, forceRefresh);
+  
+  if (usedCache) {
+    console.log("[VideoGallery] 使用缓存，无需重新加载");
+    // 恢复 IntersectionObserver
+    nextTick(() => {
+      initIntersectionObserver();
+    });
+  } else {
+    // 新加载的数据，需要加载初始批次
+    await loadMoreVideos(INITIAL_LOAD_COUNT);
+    
+    // 初始化 IntersectionObserver
+    initIntersectionObserver();
+    
+    // 如果还有更多视频，在后台继续加载
+    if (hasMoreVideos.value) {
+      loadRemainingInBackground();
+    }
+  }
+}
+
+// 加载视频为 Blob URL（更可靠的方式）
+async function loadVideoAsBlob(path: string): Promise<string | null> {
+  try {
+    console.log("[VideoGallery] Loading video as blob:", path);
+    const fileData = await readFile(path);
+    const blob = new Blob([fileData], { type: 'video/mp4' });
+    const url = URL.createObjectURL(blob);
+    console.log("[VideoGallery] Created blob URL:", url);
+    return url;
+  } catch (error) {
+    console.error("[VideoGallery] Failed to load video as blob:", error);
+    return null;
+  }
+}
 
 // 初始化 IntersectionObserver 用于可视区域优先加载
 function initIntersectionObserver() {
@@ -156,77 +188,22 @@ function initIntersectionObserver() {
 }
 
 // 加载单个视频
-async function loadVideoItem(videoItem: VideoItem) {
+async function loadVideoItem(videoItem: typeof store.displayedVideos[0]) {
   if (videoItem.loading || videoItem.blobUrl) return;
   
-  videoItem.loading = true;
+  store.setVideoLoading(videoItem.path, true);
+  
   try {
     console.log("[VideoGallery] Loading video as blob:", videoItem.path);
     const fileData = await readFile(videoItem.path);
     const blob = new Blob([fileData], { type: 'video/mp4' });
-    videoItem.blobUrl = URL.createObjectURL(blob);
-    videoItem.loaded = true;
-    console.log("[VideoGallery] Created blob URL:", videoItem.blobUrl);
+    const blobUrl = URL.createObjectURL(blob);
+    store.setVideoBlobUrl(videoItem.path, blobUrl);
+    console.log("[VideoGallery] Created blob URL:", blobUrl);
   } catch (error) {
     console.error("[VideoGallery] Failed to load video as blob:", error);
   } finally {
-    videoItem.loading = false;
-  }
-}
-
-// 加载视频为 Blob URL（更可靠的方式）
-async function loadVideoAsBlob(path: string): Promise<string | null> {
-  try {
-    console.log("[VideoGallery] Loading video as blob:", path);
-    const fileData = await readFile(path);
-    const blob = new Blob([fileData], { type: 'video/mp4' });
-    const url = URL.createObjectURL(blob);
-    console.log("[VideoGallery] Created blob URL:", url);
-    return url;
-  } catch (error) {
-    console.error("[VideoGallery] Failed to load video as blob:", error);
-    return null;
-  }
-}
-
-async function loadVideos() {
-  isLoading.value = true;
-  loadedCount.value = 0;
-  displayedVideos.value = [];
-  allVideos.value = [];
-  
-  try {
-    // 确保 outputDir 有值
-    const dir = outputDir.value || "video";
-    console.log("[VideoGallery] Loading videos from:", dir);
-    const loadedVideos = await getVideos(dir);
-    console.log("[VideoGallery] Total videos found:", loadedVideos.length);
-    
-    // 保存所有视频元数据（不含 URL）
-    allVideos.value = loadedVideos.map(video => ({
-      ...video,
-      url: convertFileSrc(video.path),
-      blobUrl: undefined,
-      loaded: false,
-      loading: false,
-    }));
-    
-    // 初始加载前 N 个
-    await loadMoreVideos(INITIAL_LOAD_COUNT);
-    
-    console.log("[VideoGallery] Initial videos loaded:", displayedVideos.value.length);
-    
-    // 初始化 IntersectionObserver
-    initIntersectionObserver();
-    
-    // 如果还有更多视频，在后台继续加载
-    if (hasMoreVideos.value) {
-      loadRemainingInBackground();
-    }
-  } catch (e) {
-    console.error("Failed to load videos:", e);
-  } finally {
-    isLoading.value = false;
+    store.setVideoLoading(videoItem.path, false);
   }
 }
 
@@ -243,21 +220,19 @@ async function loadMoreVideos(count: number = CHUNK_SIZE) {
   
   try {
     // 并行加载这一批视频
-    const loadedBatch = await Promise.all(
+    await Promise.all(
       batch.map(async (video) => {
-        const blobUrl = await loadVideoAsBlob(video.path);
-        return {
-          ...video,
-          blobUrl: blobUrl || undefined,
-          loaded: !!blobUrl,
-          loading: false,
-        };
+        if (!video.blobUrl) {
+          const blobUrl = await loadVideoAsBlob(video.path);
+          if (blobUrl) {
+            store.setVideoBlobUrl(video.path, blobUrl);
+          }
+        }
       })
     );
     
-    // 添加到已显示列表
-    displayedVideos.value.push(...loadedBatch);
-    loadedCount.value = end;
+    // 更新 Store 中的显示数量
+    store.loadMore(end - start);
     
     console.log(`[VideoGallery] Loaded batch: ${start} - ${end}, total loaded: ${loadedCount.value}`);
     
@@ -297,12 +272,12 @@ async function handleDelete(path: string) {
   if (!confirmed) return;
 
   try {
-    await deleteVideo(path);
     // 如果删除的是当前预览的视频，关闭预览
     if (selectedVideo.value?.path === path) {
       closeVideoModal();
     }
-    await loadVideos();
+    // 从 Store 中删除
+    await store.removeVideo(path);
   } catch (e) {
     await showDialog({
       title: "错误",
@@ -320,7 +295,7 @@ async function handleOpenDir() {
   }
 }
 
-async function openVideoModal(video: VideoItem) {
+async function openVideoModal(video: typeof store.displayedVideos[0]) {
   selectedVideo.value = video;
   isPlaying.value = false;
   
@@ -332,6 +307,8 @@ async function openVideoModal(video: VideoItem) {
     const blobUrl = await loadVideoAsBlob(video.path);
     if (blobUrl) {
       previewBlobUrl.value = blobUrl;
+      // 同时更新 store 中的 blobUrl
+      store.setVideoBlobUrl(video.path, blobUrl);
     }
   }
   
@@ -397,7 +374,7 @@ function handleVideoError(e: Event) {
           打开目录
         </button>
         <button
-          @click="loadVideos"
+          @click="() => loadVideos(true)"
           :disabled="isLoading"
           class="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"
         >

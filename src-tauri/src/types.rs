@@ -34,7 +34,7 @@ pub struct OptimizeResult {
     pub error: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImageInfo {
     pub path: String,
     pub name: String,
@@ -68,7 +68,7 @@ pub struct VideoGenerationResult {
     pub error: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VideoInfo {
     pub path: String,
     pub name: String,
