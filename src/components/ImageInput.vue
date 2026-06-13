@@ -26,6 +26,7 @@ const isDragging = ref(false);
 const showUrlInput = ref(false);
 const urlInput = ref("");
 const urlInputRef = ref<HTMLInputElement | null>(null);
+const previewImage = ref<ReferenceImage | null>(null);
 
 const images = computed({
   get: () => props.modelValue,
@@ -210,6 +211,18 @@ async function handleDrop(e: DragEvent) {
 
   if (props.disabled || !canAddMore.value) return;
 
+  // 首先检查是否有拖拽的 URL（从浏览器拖拽图片链接）
+  const urlData = e.dataTransfer?.getData("text/uri-list") || e.dataTransfer?.getData("text/plain");
+  if (urlData && urlData.match(/^https?:\/\/.+/i)) {
+    // 检查是否已达到最大数量
+    if (images.value.length >= maxImages.value) {
+      emit("maxReached");
+      return;
+    }
+    await addImageFromUrl(urlData.trim());
+    return;
+  }
+
   const files = e.dataTransfer?.files;
   if (!files || files.length === 0) return;
 
@@ -243,6 +256,32 @@ async function handleDrop(e: DragEvent) {
   }
 }
 
+// 从 URL 添加图片
+async function addImageFromUrl(url: string) {
+  try {
+    // 尝试加载图片以验证
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = () => reject(new Error("图片加载失败"));
+      img.src = url;
+    });
+
+    const newImage: ReferenceImage = {
+      id: generateId(),
+      type: "url",
+      source: url,
+      preview: url,
+    };
+
+    images.value = [...images.value, newImage];
+  } catch (e) {
+    console.error("无法加载该图片:", url);
+  }
+}
+
 // 取消 URL 输入
 function cancelUrlInput() {
   urlInput.value = "";
@@ -256,6 +295,16 @@ function handleUrlKeydown(e: KeyboardEvent) {
   } else if (e.key === "Escape") {
     cancelUrlInput();
   }
+}
+
+// 打开图片预览
+function openPreview(image: ReferenceImage) {
+  previewImage.value = image;
+}
+
+// 关闭图片预览
+function closePreview() {
+  previewImage.value = null;
 }
 </script>
 
@@ -277,7 +326,8 @@ function handleUrlKeydown(e: KeyboardEvent) {
       <div
         v-for="img in images"
         :key="img.id"
-        class="relative group w-20 h-20 rounded-lg overflow-hidden border"
+        class="relative group w-20 h-20 rounded-lg overflow-hidden border cursor-pointer hover:border-primary transition-colors"
+        @click="openPreview(img)"
       >
         <img
           :src="img.preview"
@@ -285,7 +335,7 @@ function handleUrlKeydown(e: KeyboardEvent) {
           alt="参考图片"
         />
         <button
-          @click="removeImage(img.id)"
+          @click.stop="removeImage(img.id)"
           class="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-black/60 hover:bg-black/80 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
           :disabled="disabled"
         >
@@ -296,6 +346,34 @@ function handleUrlKeydown(e: KeyboardEvent) {
           class="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-[10px] text-center py-0.5"
         >
           URL
+        </div>
+      </div>
+    </div>
+
+    <!-- 图片预览弹窗 -->
+    <div
+      v-if="previewImage"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
+      @click="closePreview"
+    >
+      <div class="relative max-w-[90vw] max-h-[90vh]">
+        <img
+          :src="previewImage.preview"
+          class="max-w-full max-h-[90vh] object-contain rounded-lg"
+          alt="预览图片"
+          @click.stop
+        />
+        <button
+          @click="closePreview"
+          class="absolute -top-10 right-0 w-8 h-8 rounded-full bg-white/20 hover:bg-white/40 text-white flex items-center justify-center transition-colors"
+        >
+          <XIcon class="w-5 h-5" />
+        </button>
+        <div
+          v-if="previewImage.type === 'url'"
+          class="absolute bottom-4 left-4 right-4 bg-black/60 text-white text-sm px-3 py-2 rounded-lg truncate"
+        >
+          {{ previewImage.source }}
         </div>
       </div>
     </div>
@@ -348,7 +426,7 @@ function handleUrlKeydown(e: KeyboardEvent) {
 
       <span class="text-xs text-muted-foreground ml-2">
         <ImageIcon class="w-3 h-3 inline mr-1" />
-        支持拖拽图片到此处
+        支持拖拽图片或链接到此处
       </span>
 
       <!-- 最大数量提示 -->
