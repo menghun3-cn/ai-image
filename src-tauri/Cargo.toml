@@ -1,6 +1,6 @@
 [package]
 name = "ai-image-v2"
-version = "2.1.5"
+version = "2.1.6"
 description = "AI Image Generator - Tauri + Vue"
 authors = ["ai-image"]
 edition = "2021"
