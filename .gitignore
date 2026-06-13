@@ -29,7 +29,7 @@ dist-ssr
 
 # Environment
 .env
-
+.omc/
 # Images
 images/
 src-tauri/portable/
